@@ -1,0 +1,205 @@
+import React from 'react';
+
+interface DGBLogoProps {
+  className?: string;
+  size?: number | string;
+  variant?: 'full' | 'icon' | 'mark';
+  showText?: boolean;
+}
+
+export const DGBLogo: React.FC<DGBLogoProps> = ({
+  className = 'w-10 h-10',
+  size,
+  variant = 'icon',
+  showText = false,
+}) => {
+  const style = size ? { width: size, height: size } : undefined;
+
+  return (
+    <div className={`inline-flex items-center space-x-2.5 ${showText ? '' : 'shrink-0'}`}>
+      <svg
+        viewBox="0 0 500 500"
+        className={`select-none ${className}`}
+        style={style}
+        role="img"
+        aria-label="Logo DGB App PRO"
+      >
+        <defs>
+          {/* Royal Blue Gradients */}
+          <linearGradient id="dgbCompBlueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#021B79" />
+            <stop offset="40%" stop-color="#0544B8" />
+            <stop offset="70%" stop-color="#0D64D8" />
+            <stop offset="100%" stop-color="#022588" />
+          </linearGradient>
+
+          <linearGradient id="dgbCompRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#083E9E" />
+            <stop offset="50%" stop-color="#1A6DE8" />
+            <stop offset="100%" stop-color="#042674" />
+          </linearGradient>
+
+          <linearGradient id="dgbCompGlobeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#1E6DEB" />
+            <stop offset="50%" stop-color="#0B4EC8" />
+            <stop offset="100%" stop-color="#052F85" />
+          </linearGradient>
+
+          <linearGradient id="dgbCompGlobeWater" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#E1EFFF" />
+            <stop offset="100%" stop-color="#B8D7FC" />
+          </linearGradient>
+
+          <filter id="dgbCompShadow" x="-10%" y="-10%" width="125%" height="125%">
+            <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#001a4e" flood-opacity="0.18" />
+          </filter>
+        </defs>
+
+        {/* Clean White Circle Base */}
+        <circle cx="250" cy="250" r="240" fill="#ffffff" />
+
+        {/* Outer Circular Ring */}
+        <circle cx="250" cy="250" r="226" fill="none" stroke="url(#dgbCompRingGrad)" stroke-width="7" />
+
+        {/* Outer Orbital Swooshes */}
+        <path
+          d="M 120 48 A 236 236 0 0 1 458 200"
+          fill="none"
+          stroke="url(#dgbCompRingGrad)"
+          stroke-width="2.5"
+          opacity="0.85"
+          strokeLinecap="round"
+        />
+        <path
+          d="M 380 452 A 236 236 0 0 1 42 300"
+          fill="none"
+          stroke="url(#dgbCompRingGrad)"
+          stroke-width="2.5"
+          opacity="0.85"
+          strokeLinecap="round"
+        />
+        <path
+          d="M 80 110 A 242 242 0 0 1 200 42"
+          fill="none"
+          stroke="#2563EB"
+          stroke-width="1.5"
+          opacity="0.6"
+          strokeLinecap="round"
+        />
+
+        {/* Main Monogram DGB with Globe */}
+        <g filter="url(#dgbCompShadow)">
+          {/* Dynamic Crescent Swoosh wrapping D & G */}
+          <path
+            d="M 330 138 C 240 120, 140 145, 146 250 C 150 310, 200 340, 275 340 C 230 332, 168 305, 165 250 C 162 185, 235 152, 330 138 Z"
+            fill="url(#dgbCompBlueGrad)"
+          />
+          <path
+            d="M 152 280 C 170 320, 220 344, 280 342 C 235 338, 185 315, 172 278 Z"
+            fill="#0544B8"
+          />
+
+          {/* Letter D */}
+          <path
+            d="M 68 138 L 138 138 C 178 138, 208 165, 208 238 C 208 308, 178 338, 138 338 L 68 338 L 68 316 L 88 316 L 88 160 L 68 160 Z M 110 160 L 110 316 L 134 316 C 162 316, 184 290, 184 238 C 184 186, 162 160, 134 160 Z"
+            fill="url(#dgbCompBlueGrad)"
+          />
+
+          {/* Central Globe Inside G */}
+          <g transform="translate(254, 238)">
+            {/* Water base */}
+            <circle cx="0" cy="0" r="54" fill="url(#dgbCompGlobeWater)" />
+
+            {/* Continents Silhouettes */}
+            {/* Africa & Europe */}
+            <path
+              d="M -8 -45 C 5 -45, 12 -38, 10 -32 C 8 -26, 15 -20, 18 -10 C 20 0, 12 18, 5 28 C -2 36, -10 32, -15 22 C -20 12, -26 4, -22 -10 C -18 -22, -18 -38, -8 -45 Z"
+              fill="url(#dgbCompGlobeGrad)"
+            />
+            {/* Eurasia & Americas Accents */}
+            <path
+              d="M 15 -42 C 28 -38, 42 -28, 44 -15 C 38 -12, 30 -16, 22 -20 C 18 -26, 12 -35, 15 -42 Z"
+              fill="url(#dgbCompGlobeGrad)"
+            />
+            <path
+              d="M -45 -18 C -38 -26, -30 -22, -25 -15 C -28 -8, -36 -4, -44 -10 Z"
+              fill="url(#dgbCompGlobeGrad)"
+            />
+            <path
+              d="M -15 -12 C -8 -15, 0 -8, 2 0 C -4 4, -12 2, -15 -12 Z"
+              fill="#60A5FA"
+              opacity="0.6"
+            />
+
+            {/* Parallels & Meridians */}
+            <circle cx="0" cy="0" r="54" fill="none" stroke="#2563EB" strokeWidth="1.8" opacity="0.6" />
+            <ellipse cx="0" cy="0" rx="28" ry="54" fill="none" stroke="#2563EB" strokeWidth="1.2" opacity="0.4" />
+            <line x1="-54" y1="0" x2="54" y2="0" stroke="#2563EB" strokeWidth="1.2" opacity="0.4" />
+            <line x1="-46" y1="-26" x2="46" y2="-26" stroke="#2563EB" strokeWidth="1" opacity="0.3" />
+            <line x1="-46" y1="26" x2="46" y2="26" stroke="#2563EB" strokeWidth="1" opacity="0.3" />
+          </g>
+
+          {/* Letter G (Surrounding the Globe) */}
+          <path
+            d="M 292 142 C 275 136, 252 134, 232 142 C 205 152, 186 178, 186 238 C 186 298, 206 325, 234 335 C 255 342, 285 340, 304 330 L 304 238 L 260 238 L 260 258 L 282 258 L 282 308 C 268 316, 248 316, 238 312 C 218 304, 210 282, 210 238 C 210 192, 222 162, 242 156 C 255 152, 274 154, 288 160 Z"
+            fill="url(#dgbCompBlueGrad)"
+          />
+
+          {/* Connecting bar into B */}
+          <rect x="282" y="228" width="80" height="20" rx="3" fill="url(#dgbCompBlueGrad)" />
+
+          {/* Letter B */}
+          <path
+            d="M 338 138 L 406 138 C 435 138, 452 152, 452 182 C 452 202, 440 218, 424 226 C 444 234, 456 252, 456 280 C 456 315, 434 338, 398 338 L 338 338 L 338 316 L 358 316 L 358 160 L 338 160 Z M 380 160 L 380 222 L 402 222 C 418 222, 428 214, 428 191 C 428 169, 418 160, 402 160 Z M 380 242 L 380 316 L 405 316 C 422 316, 432 304, 432 279 C 432 253, 422 242, 405 242 Z"
+            fill="url(#dgbCompBlueGrad)"
+          />
+        </g>
+
+        {/* Lower Banner: Divider, 18 safar & Diamond */}
+        <g id="dgbCompFooter">
+          <line x1="95" y1="372" x2="175" y2="372" stroke="#0A387E" strokeWidth="2.5" strokeLinecap="round" />
+          <circle cx="175" cy="372" r="3.5" fill="#0A387E" />
+
+          <text
+            x="250"
+            y="380"
+            textAnchor="middle"
+            fontFamily="'Plus Jakarta Sans', system-ui, -apple-system, sans-serif"
+            fontSize="22"
+            fontWeight="800"
+            fill="#0A387E"
+            letterSpacing="4"
+          >
+            18 safar
+          </text>
+
+          <circle cx="325" cy="372" r="3.5" fill="#0A387E" />
+          <line x1="325" y1="372" x2="405" y2="372" stroke="#0A387E" strokeWidth="2.5" strokeLinecap="round" />
+
+          {/* Diamond Star Accent */}
+          <g transform="translate(250, 412)">
+            <line x1="-70" y1="0" x2="-18" y2="0" stroke="#0A387E" strokeWidth="1.8" />
+            <circle cx="-70" cy="0" r="1.5" fill="#0A387E" />
+            <line x1="18" y1="0" x2="70" y2="0" stroke="#0A387E" strokeWidth="1.8" />
+            <circle cx="70" cy="0" r="1.5" fill="#0A387E" />
+            <path d="M 0 -11 L 3.5 -2 L 12 0 L 3.5 2 L 0 11 L -3.5 2 L -12 0 L -3.5 -2 Z" fill="#0A387E" />
+          </g>
+        </g>
+      </svg>
+
+      {showText && (
+        <div className="flex flex-col">
+          <div className="flex items-center space-x-1.5">
+            <span className="font-extrabold text-base tracking-tight text-slate-900">DGB App</span>
+            <span className="px-1.5 py-0.2 text-[10px] font-black bg-blue-700 text-white rounded uppercase tracking-wider">
+              PRO
+            </span>
+          </div>
+          <span className="text-[10px] text-slate-500 font-semibold tracking-wide">
+            18 safar • Établissement Supérieur
+          </span>
+        </div>
+      )}
+    </div>
+  );
+};

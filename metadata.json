@@ -1,0 +1,6 @@
+{
+  "name": "DGB App PRO",
+  "description": "DGB App PRO - Système de gestion intégrée pour établissements d'enseignement supérieur (Administration, Pédagogie LMD, Comptabilité FCFA).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

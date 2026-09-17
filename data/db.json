@@ -1,0 +1,1205 @@
+{
+  "config": {
+    "id": "cfg_ismtn_01",
+    "name": "Institut Supérieur des Métiers du Numérique et du Management",
+    "acronym": "ISMNM Dakar",
+    "motto": "Excellence Académique, Innovation & Leadership Africain",
+    "email": "contact@ismnm-dakar.sn",
+    "phone": "+221 33 825 40 00 / +221 77 500 12 34",
+    "address": "Rue Aimé Césaire, Fann Résidence",
+    "city": "Dakar",
+    "country": "Sénégal",
+    "ninea": "007892341 2V2",
+    "rc": "SN-DKR-2018-B-14290",
+    "activeAcademicYearId": "year_2025_2026",
+    "sites": [
+      {
+        "id": "site_fann",
+        "name": "Campus Fann Résidence (Siège)",
+        "address": "Rue Aimé Césaire x Rue de Diourbel",
+        "city": "Dakar"
+      },
+      {
+        "id": "site_plateau",
+        "name": "Campus Plateau (Pôle Exécutif & Masters)",
+        "address": "Avenue Peytavin x Rue Carnot",
+        "city": "Dakar"
+      }
+    ],
+    "documentNumbering": {
+      "matriculePrefix": "ISMNM",
+      "invoicePrefix": "FAC",
+      "receiptPrefix": "REC",
+      "expensePrefix": "DEP"
+    }
+  },
+  "academicYears": [
+    {
+      "id": "year_2024_2025",
+      "code": "2024-2025",
+      "startDate": "2024-10-01",
+      "endDate": "2025-07-31",
+      "isCurrent": false,
+      "isClosed": true
+    },
+    {
+      "id": "year_2025_2026",
+      "code": "2025-2026",
+      "startDate": "2025-10-01",
+      "endDate": "2026-07-31",
+      "isCurrent": true,
+      "isClosed": false
+    }
+  ],
+  "programs": [
+    {
+      "id": "prog_lic_info_l1",
+      "code": "L-INFO-1",
+      "title": "Licence 1 - Informatique & Génie Logiciel",
+      "domain": "Sciences & Technologies du Numérique",
+      "level": "Licence",
+      "yearLevel": "L1",
+      "semesters": [
+        "Semestre 1",
+        "Semestre 2"
+      ],
+      "accreditationRef": "Arrêté MESRI/DGES/DIPES N° 004812/2021",
+      "accreditationValidUntil": "2027-12-31",
+      "isRegulatedCertified": true,
+      "defaultFees": {
+        "registrationFee": 200000,
+        "tuitionFee": 900000,
+        "labFee": 50000,
+        "otherFees": 25000
+      }
+    },
+    {
+      "id": "prog_lic_info_l3",
+      "code": "L-INFO-3",
+      "title": "Licence 3 - Génie Logiciel & Systèmes Répartis",
+      "domain": "Sciences & Technologies du Numérique",
+      "level": "Licence",
+      "yearLevel": "L3",
+      "semesters": [
+        "Semestre 5",
+        "Semestre 6"
+      ],
+      "accreditationRef": "Arrêté MESRI/DGES/DIPES N° 004812/2021",
+      "accreditationValidUntil": "2027-12-31",
+      "isRegulatedCertified": true,
+      "defaultFees": {
+        "registrationFee": 250000,
+        "tuitionFee": 1100000,
+        "labFee": 75000,
+        "otherFees": 25000
+      }
+    },
+    {
+      "id": "prog_mast_cca_m1",
+      "code": "M-CCA-1",
+      "title": "Master 1 - Comptabilité, Contrôle & Audit (CCA)",
+      "domain": "Sciences de Gestion & Économie",
+      "level": "Master",
+      "yearLevel": "M1",
+      "semesters": [
+        "Semestre 7",
+        "Semestre 8"
+      ],
+      "accreditationRef": "Habilitation ANAQ-Sup N° H-2022-0914",
+      "accreditationValidUntil": "2028-06-30",
+      "isRegulatedCertified": true,
+      "defaultFees": {
+        "registrationFee": 300000,
+        "tuitionFee": 1400000,
+        "labFee": 0,
+        "otherFees": 50000
+      }
+    },
+    {
+      "id": "prog_lic_mgt_l1",
+      "code": "L-MGT-1",
+      "title": "Licence 1 - Management & Économie Numérique",
+      "domain": "Sciences de Gestion & Économie",
+      "level": "Licence",
+      "yearLevel": "L1",
+      "semesters": [
+        "Semestre 1",
+        "Semestre 2"
+      ],
+      "accreditationRef": "Arrêté MESRI/DGES/DIPES N° 005114/2022",
+      "accreditationValidUntil": "2028-12-31",
+      "isRegulatedCertified": true,
+      "defaultFees": {
+        "registrationFee": 200000,
+        "tuitionFee": 850000,
+        "labFee": 25000,
+        "otherFees": 25000
+      }
+    }
+  ],
+  "users": [
+    {
+      "id": "usr_admin",
+      "name": "Modou Diouf",
+      "email": "admin@ismnm.sn",
+      "roles": [
+        "admin",
+        "dg"
+      ],
+      "activeRole": "admin"
+    },
+    {
+      "id": "usr_dg",
+      "name": "Dr. Aïssatou Ndiaye Diouf",
+      "email": "direction@ismnm.sn",
+      "roles": [
+        "dg"
+      ],
+      "activeRole": "dg"
+    },
+    {
+      "id": "usr_scolarite",
+      "name": "Fatou Kiné Sow",
+      "email": "scolarite@ismnm.sn",
+      "roles": [
+        "scolarite"
+      ],
+      "activeRole": "scolarite"
+    },
+    {
+      "id": "usr_pedagogie",
+      "name": "Pr. Ousmane Abdoulaye Diop",
+      "email": "pedagogie@ismnm.sn",
+      "roles": [
+        "pedagogie"
+      ],
+      "activeRole": "pedagogie"
+    },
+    {
+      "id": "usr_comptable",
+      "name": "Babacar Sadikh Seck",
+      "email": "comptabilite@ismnm.sn",
+      "roles": [
+        "comptable"
+      ],
+      "activeRole": "comptable"
+    },
+    {
+      "id": "usr_caissier",
+      "name": "Mariama Ciré Diallo",
+      "email": "caisse@ismnm.sn",
+      "roles": [
+        "caissier"
+      ],
+      "activeRole": "caissier"
+    },
+    {
+      "id": "usr_enseignant",
+      "name": "Dr. Cheikh Ibrahima Kane",
+      "email": "c.kane@ismnm.sn",
+      "roles": [
+        "enseignant"
+      ],
+      "activeRole": "enseignant",
+      "teacherId": "tch_kane"
+    },
+    {
+      "id": "usr_etudiant",
+      "name": "Mouhamed Lamine Bâ",
+      "email": "mouhamed.ba@ismnm-etu.sn",
+      "roles": [
+        "etudiant"
+      ],
+      "activeRole": "etudiant",
+      "studentId": "stu_01"
+    }
+  ],
+  "students": [
+    {
+      "id": "stu_01",
+      "matricule": "ISMNM-2025-0014",
+      "firstName": "Mouhamed Lamine",
+      "lastName": "Bâ",
+      "gender": "M",
+      "birthDate": "2004-03-18",
+      "birthPlace": "Saint-Louis, Sénégal",
+      "nationality": "Sénégalaise",
+      "cniPassport": "1 278 2004 00192",
+      "email": "mouhamed.ba@ismnm-etu.sn",
+      "phone": "+221 77 345 67 89",
+      "parentName": "El Hadji Malick Bâ",
+      "parentPhone": "+221 76 211 44 55",
+      "address": "Sicap Liberté 5, Villa 412",
+      "city": "Dakar",
+      "status": "inscrit",
+      "submissionDate": "2025-09-02",
+      "admissionDecisionDate": "2025-09-10",
+      "admissionNotes": "Baccalauréat Scientifique S2 avec Mention Bien. Dossier conforme.",
+      "documents": [
+        {
+          "name": "Attestation de Réussite au Baccalauréat",
+          "status": "valide"
+        },
+        {
+          "name": "Carte Nationale d'Identité (CNI)",
+          "status": "valide"
+        },
+        {
+          "name": "Certificat de Nationalité",
+          "status": "valide"
+        },
+        {
+          "name": "Relevé de notes de Terminale",
+          "status": "valide"
+        }
+      ]
+    },
+    {
+      "id": "stu_02",
+      "matricule": "ISMNM-2025-0015",
+      "firstName": "Khadija Aminata",
+      "lastName": "Touré",
+      "gender": "F",
+      "birthDate": "2003-11-25",
+      "birthPlace": "Thiès, Sénégal",
+      "nationality": "Sénégalaise",
+      "cniPassport": "2 890 2003 04518",
+      "email": "khadija.toure@ismnm-etu.sn",
+      "phone": "+221 78 412 88 90",
+      "parentName": "Marième Faye Touré",
+      "parentPhone": "+221 77 640 10 20",
+      "address": "Mermoz Pyrotechnie",
+      "city": "Dakar",
+      "status": "inscrit",
+      "submissionDate": "2025-09-05",
+      "admissionDecisionDate": "2025-09-12",
+      "admissionNotes": "Admission en Master 1 CCA validée sur titre Licence Finance.",
+      "documents": [
+        {
+          "name": "Diplôme de Licence Gestion/CCA",
+          "status": "valide"
+        },
+        {
+          "name": "Relevés de notes L1, L2, L3",
+          "status": "valide"
+        },
+        {
+          "name": "CNI",
+          "status": "valide"
+        }
+      ]
+    },
+    {
+      "id": "stu_03",
+      "matricule": "ISMNM-2025-0016",
+      "firstName": "Seydina Oumar",
+      "lastName": "Gueye",
+      "gender": "M",
+      "birthDate": "2005-01-14",
+      "birthPlace": "Kaolack, Sénégal",
+      "nationality": "Sénégalaise",
+      "cniPassport": "1 450 2005 08912",
+      "email": "seydina.gueye@gmail.com",
+      "phone": "+221 70 890 33 22",
+      "parentName": "Ibrahima Gueye",
+      "parentPhone": "+221 77 555 78 90",
+      "address": "Grand Yoff",
+      "city": "Dakar",
+      "status": "admis",
+      "submissionDate": "2025-09-15",
+      "admissionDecisionDate": "2025-09-18",
+      "admissionNotes": "Candidature retenue. En attente de finalisation d inscription.",
+      "documents": [
+        {
+          "name": "Baccalauréat G",
+          "status": "valide"
+        },
+        {
+          "name": "Extrait de naissance",
+          "status": "valide"
+        },
+        {
+          "name": "Photos d identité",
+          "status": "depose"
+        }
+      ]
+    },
+    {
+      "id": "stu_04",
+      "matricule": "ISMNM-2025-0017",
+      "firstName": "Awa Fatoumata",
+      "lastName": "Cissé",
+      "gender": "F",
+      "birthDate": "2004-08-30",
+      "birthPlace": "Ziguinchor, Sénégal",
+      "nationality": "Sénégalaise",
+      "cniPassport": "2 110 2004 09844",
+      "email": "awa.cisse@gmail.com",
+      "phone": "+221 77 810 22 44",
+      "parentName": "Bakary Cissé",
+      "parentPhone": "+221 76 900 11 22",
+      "address": "Ouakam Cité Avion",
+      "city": "Dakar",
+      "status": "candidat",
+      "submissionDate": "2025-09-20",
+      "admissionNotes": "Dossier en cours d instruction par la commission.",
+      "documents": [
+        {
+          "name": "Baccalauréat L2",
+          "status": "depose"
+        },
+        {
+          "name": "Certificat de résidence",
+          "status": "en_attente"
+        }
+      ]
+    },
+    {
+      "id": "stu_05",
+      "matricule": "ISMNM-2025-0018",
+      "firstName": "Fatou Bintou",
+      "lastName": "Ndiaye",
+      "gender": "F",
+      "birthDate": "2004-06-12",
+      "birthPlace": "Dakar, Sénégal",
+      "nationality": "Sénégalaise",
+      "cniPassport": "2 198 2004 03314",
+      "email": "fatou.ndiaye@ismnm-etu.sn",
+      "phone": "+221 77 654 32 10",
+      "parentName": "Cheikh Ndiaye",
+      "parentPhone": "+221 70 321 00 11",
+      "address": "Point E, Rue 3",
+      "city": "Dakar",
+      "status": "inscrit",
+      "submissionDate": "2025-09-08",
+      "admissionDecisionDate": "2025-09-14",
+      "documents": [
+        {
+          "name": "Baccalauréat S1",
+          "status": "valide"
+        },
+        {
+          "name": "CNI",
+          "status": "valide"
+        }
+      ]
+    },
+    {
+      "id": "stu_06",
+      "matricule": "ISMNM-2025-0019",
+      "firstName": "Ousmane Demba",
+      "lastName": "Sow",
+      "gender": "M",
+      "birthDate": "2003-12-04",
+      "birthPlace": "Mbour, Sénégal",
+      "nationality": "Sénégalaise",
+      "cniPassport": "1 341 2003 07821",
+      "email": "ousmane.sow@ismnm-etu.sn",
+      "phone": "+221 78 555 12 34",
+      "parentName": "Demba Sow",
+      "parentPhone": "+221 76 444 88 99",
+      "address": "Fann Hock",
+      "city": "Dakar",
+      "status": "inscrit",
+      "submissionDate": "2025-09-09",
+      "admissionDecisionDate": "2025-09-15",
+      "documents": [
+        {
+          "name": "Baccalauréat S2",
+          "status": "valide"
+        },
+        {
+          "name": "CNI",
+          "status": "valide"
+        }
+      ]
+    },
+    {
+      "id": "stu_07",
+      "matricule": "ISMNM-2025-0020",
+      "firstName": "Astou Fall",
+      "lastName": "Diop",
+      "gender": "F",
+      "birthDate": "2004-09-22",
+      "birthPlace": "Saint-Louis, Sénégal",
+      "nationality": "Sénégalaise",
+      "cniPassport": "2 402 2004 09103",
+      "email": "astou.diop@ismnm-etu.sn",
+      "phone": "+221 77 111 22 33",
+      "parentName": "Mamadou Diop",
+      "parentPhone": "+221 70 999 11 22",
+      "address": "Sacré-Cœur 3",
+      "city": "Dakar",
+      "status": "inscrit",
+      "submissionDate": "2025-09-10",
+      "admissionDecisionDate": "2025-09-15",
+      "documents": [
+        {
+          "name": "Baccalauréat S2",
+          "status": "valide"
+        },
+        {
+          "name": "CNI",
+          "status": "valide"
+        }
+      ]
+    },
+    {
+      "id": "stu_08",
+      "matricule": "ISMNM-2025-0021",
+      "firstName": "Mamadou Lamine",
+      "lastName": "Sané",
+      "gender": "M",
+      "birthDate": "2004-01-19",
+      "birthPlace": "Ziguinchor, Sénégal",
+      "nationality": "Sénégalaise",
+      "cniPassport": "1 550 2004 06782",
+      "email": "mamadou.sane@ismnm-etu.sn",
+      "phone": "+221 76 888 44 22",
+      "parentName": "Ansoumana Sané",
+      "parentPhone": "+221 77 333 11 00",
+      "address": "Médina, Rue 6",
+      "city": "Dakar",
+      "status": "inscrit",
+      "submissionDate": "2025-09-11",
+      "admissionDecisionDate": "2025-09-16",
+      "documents": [
+        {
+          "name": "Baccalauréat S2",
+          "status": "valide"
+        },
+        {
+          "name": "CNI",
+          "status": "valide"
+        }
+      ]
+    }
+  ],
+  "enrollments": [
+    {
+      "id": "enr_01",
+      "studentId": "stu_01",
+      "programId": "prog_lic_info_l1",
+      "academicYearId": "year_2025_2026",
+      "enrollmentDate": "2025-09-12",
+      "paymentPlan": "mensuel",
+      "discountType": "excellence",
+      "discountAmount": 100000,
+      "discountApprovedBy": "Dr. Aïssatou Ndiaye Diouf (DG)",
+      "discountReason": "Mention Bien au Baccalauréat Scientifique",
+      "lockedRegistrationFee": 200000,
+      "lockedTuitionFee": 900000,
+      "lockedOtherFees": 75000,
+      "totalGross": 1175000,
+      "totalNet": 1075000,
+      "isClosed": false
+    },
+    {
+      "id": "enr_02",
+      "studentId": "stu_02",
+      "programId": "prog_mast_cca_m1",
+      "academicYearId": "year_2025_2026",
+      "enrollmentDate": "2025-09-14",
+      "paymentPlan": "trimestriel",
+      "discountType": "none",
+      "discountAmount": 0,
+      "lockedRegistrationFee": 300000,
+      "lockedTuitionFee": 1400000,
+      "lockedOtherFees": 50000,
+      "totalGross": 1750000,
+      "totalNet": 1750000,
+      "isClosed": false
+    },
+    {
+      "id": "enr_05",
+      "studentId": "stu_05",
+      "programId": "prog_lic_info_l1",
+      "academicYearId": "year_2025_2026",
+      "enrollmentDate": "2025-09-15",
+      "paymentPlan": "mensuel",
+      "discountType": "none",
+      "discountAmount": 0,
+      "lockedRegistrationFee": 200000,
+      "lockedTuitionFee": 900000,
+      "lockedOtherFees": 75000,
+      "totalGross": 1175000,
+      "totalNet": 1175000,
+      "isClosed": false
+    },
+    {
+      "id": "enr_06",
+      "studentId": "stu_06",
+      "programId": "prog_lic_info_l1",
+      "academicYearId": "year_2025_2026",
+      "enrollmentDate": "2025-09-16",
+      "paymentPlan": "mensuel",
+      "discountType": "none",
+      "discountAmount": 0,
+      "lockedRegistrationFee": 200000,
+      "lockedTuitionFee": 900000,
+      "lockedOtherFees": 75000,
+      "totalGross": 1175000,
+      "totalNet": 1175000,
+      "isClosed": false
+    },
+    {
+      "id": "enr_07",
+      "studentId": "stu_07",
+      "programId": "prog_lic_info_l1",
+      "academicYearId": "year_2025_2026",
+      "enrollmentDate": "2025-09-16",
+      "paymentPlan": "trimestriel",
+      "discountType": "none",
+      "discountAmount": 0,
+      "lockedRegistrationFee": 200000,
+      "lockedTuitionFee": 900000,
+      "lockedOtherFees": 75000,
+      "totalGross": 1175000,
+      "totalNet": 1175000,
+      "isClosed": false
+    },
+    {
+      "id": "enr_08",
+      "studentId": "stu_08",
+      "programId": "prog_lic_info_l1",
+      "academicYearId": "year_2025_2026",
+      "enrollmentDate": "2025-09-17",
+      "paymentPlan": "comptant",
+      "discountType": "none",
+      "discountAmount": 0,
+      "lockedRegistrationFee": 200000,
+      "lockedTuitionFee": 900000,
+      "lockedOtherFees": 75000,
+      "totalGross": 1175000,
+      "totalNet": 1175000,
+      "isClosed": false
+    }
+  ],
+  "invoices": [
+    {
+      "id": "inv_01_reg",
+      "enrollmentId": "enr_01",
+      "studentId": "stu_01",
+      "invoiceNumber": "FAC-2025-00101",
+      "title": "Frais d'inscription & Pack pédagogique",
+      "dueDate": "2025-09-15",
+      "grossAmount": 275000,
+      "discountShare": 0,
+      "netAmount": 275000,
+      "paidAmount": 275000,
+      "balanceDue": 0,
+      "status": "solde",
+      "category": "inscription",
+      "academicYearId": "year_2025_2026"
+    },
+    {
+      "id": "inv_01_m01",
+      "enrollmentId": "enr_01",
+      "studentId": "stu_01",
+      "invoiceNumber": "FAC-2025-00102",
+      "title": "Scolarité Mensualité 1 (Octobre 2025)",
+      "dueDate": "2025-10-05",
+      "grossAmount": 100000,
+      "discountShare": 20000,
+      "netAmount": 80000,
+      "paidAmount": 80000,
+      "balanceDue": 0,
+      "status": "solde",
+      "category": "scolarite",
+      "academicYearId": "year_2025_2026"
+    },
+    {
+      "id": "inv_01_m02",
+      "enrollmentId": "enr_01",
+      "studentId": "stu_01",
+      "invoiceNumber": "FAC-2025-00103",
+      "title": "Scolarité Mensualité 2 (Novembre 2025)",
+      "dueDate": "2025-11-05",
+      "grossAmount": 100000,
+      "discountShare": 20000,
+      "netAmount": 80000,
+      "paidAmount": 40000,
+      "balanceDue": 40000,
+      "status": "partiel",
+      "category": "scolarite",
+      "academicYearId": "year_2025_2026"
+    },
+    {
+      "id": "inv_01_m03",
+      "enrollmentId": "enr_01",
+      "studentId": "stu_01",
+      "invoiceNumber": "FAC-2025-00104",
+      "title": "Scolarité Mensualité 3 (Décembre 2025)",
+      "dueDate": "2025-12-05",
+      "grossAmount": 100000,
+      "discountShare": 20000,
+      "netAmount": 80000,
+      "paidAmount": 0,
+      "balanceDue": 80000,
+      "status": "en_attente",
+      "category": "scolarite",
+      "academicYearId": "year_2025_2026"
+    },
+    {
+      "id": "inv_01_m04",
+      "enrollmentId": "enr_01",
+      "studentId": "stu_01",
+      "invoiceNumber": "FAC-2025-00105",
+      "title": "Scolarité Mensualité 4 (Janvier 2026)",
+      "dueDate": "2026-01-05",
+      "grossAmount": 100000,
+      "discountShare": 20000,
+      "netAmount": 80000,
+      "paidAmount": 0,
+      "balanceDue": 80000,
+      "status": "en_attente",
+      "category": "scolarite",
+      "academicYearId": "year_2025_2026"
+    },
+    {
+      "id": "inv_02_reg",
+      "enrollmentId": "enr_02",
+      "studentId": "stu_02",
+      "invoiceNumber": "FAC-2025-00106",
+      "title": "Frais d'inscription Master & Dossier",
+      "dueDate": "2025-09-18",
+      "grossAmount": 350000,
+      "discountShare": 0,
+      "netAmount": 350000,
+      "paidAmount": 350000,
+      "balanceDue": 0,
+      "status": "solde",
+      "category": "inscription",
+      "academicYearId": "year_2025_2026"
+    },
+    {
+      "id": "inv_02_t1",
+      "enrollmentId": "enr_02",
+      "studentId": "stu_02",
+      "invoiceNumber": "FAC-2025-00107",
+      "title": "Trimestre 1 (Octobre - Décembre 2025)",
+      "dueDate": "2025-10-10",
+      "grossAmount": 466667,
+      "discountShare": 0,
+      "netAmount": 466667,
+      "paidAmount": 466667,
+      "balanceDue": 0,
+      "status": "solde",
+      "category": "scolarite",
+      "academicYearId": "year_2025_2026"
+    },
+    {
+      "id": "inv_02_t2",
+      "enrollmentId": "enr_02",
+      "studentId": "stu_02",
+      "invoiceNumber": "FAC-2025-00108",
+      "title": "Trimestre 2 (Janvier - Mars 2026)",
+      "dueDate": "2026-01-10",
+      "grossAmount": 466667,
+      "discountShare": 0,
+      "netAmount": 466667,
+      "paidAmount": 0,
+      "balanceDue": 466667,
+      "status": "en_attente",
+      "category": "scolarite",
+      "academicYearId": "year_2025_2026"
+    }
+  ],
+  "receipts": [
+    {
+      "id": "rec_01",
+      "receiptNumber": "REC-2025-00088",
+      "idempotencyKey": "idemp_wave_78912301",
+      "studentId": "stu_01",
+      "enrollmentId": "enr_01",
+      "invoiceScheduleId": "inv_01_reg",
+      "amount": 275000,
+      "paymentMethod": "wave",
+      "paymentDate": "2025-09-12 11:32:00",
+      "recordedBy": "Mariama Ciré Diallo (Caissière)",
+      "transactionRef": "WAVE-SN-TX-990142",
+      "status": "valide",
+      "notes": "Règlement intégrale inscription via Wave Sénégal",
+      "isConfirmedByServer": true
+    },
+    {
+      "id": "rec_02",
+      "receiptNumber": "REC-2025-00089",
+      "idempotencyKey": "idemp_cash_4412001",
+      "studentId": "stu_01",
+      "enrollmentId": "enr_01",
+      "invoiceScheduleId": "inv_01_m01",
+      "amount": 80000,
+      "paymentMethod": "especes",
+      "paymentDate": "2025-10-04 15:10:00",
+      "recordedBy": "Mariama Ciré Diallo (Caissière)",
+      "status": "valide",
+      "notes": "Paiement en espèces au guichet",
+      "isConfirmedByServer": true
+    },
+    {
+      "id": "rec_03",
+      "receiptNumber": "REC-2025-00090",
+      "idempotencyKey": "idemp_om_9011284",
+      "studentId": "stu_01",
+      "enrollmentId": "enr_01",
+      "invoiceScheduleId": "inv_01_m02",
+      "amount": 40000,
+      "paymentMethod": "orange_money",
+      "paymentDate": "2025-11-03 09:45:00",
+      "recordedBy": "Mariama Ciré Diallo (Caissière)",
+      "transactionRef": "OM-SN-MP-20251103-8871",
+      "status": "valide",
+      "notes": "Acompte partiel 50% sur scolarité de Novembre",
+      "isConfirmedByServer": true
+    },
+    {
+      "id": "rec_04",
+      "receiptNumber": "REC-2025-00091",
+      "idempotencyKey": "idemp_cbao_vir_1102",
+      "studentId": "stu_02",
+      "enrollmentId": "enr_02",
+      "invoiceScheduleId": "inv_02_reg",
+      "amount": 350000,
+      "paymentMethod": "virement",
+      "paymentDate": "2025-09-14 14:00:00",
+      "recordedBy": "Babacar Sadikh Seck (Comptable)",
+      "transactionRef": "VIR-CBAO-SN-2025-0914-77",
+      "status": "valide",
+      "notes": "Virement bancaire CBAO Groupe Attijariwafa",
+      "isConfirmedByServer": true
+    },
+    {
+      "id": "rec_05",
+      "receiptNumber": "REC-2025-00092",
+      "idempotencyKey": "idemp_wave_m1_t1",
+      "studentId": "stu_02",
+      "enrollmentId": "enr_02",
+      "invoiceScheduleId": "inv_02_t1",
+      "amount": 466667,
+      "paymentMethod": "wave",
+      "paymentDate": "2025-10-08 10:20:00",
+      "recordedBy": "Mariama Ciré Diallo (Caissière)",
+      "transactionRef": "WAVE-SN-TX-100234",
+      "status": "valide",
+      "notes": "Règlement Trimestre 1 validé",
+      "isConfirmedByServer": true
+    }
+  ],
+  "cashSession": {
+    "id": "csh_sess_today",
+    "sessionNumber": "CSH-2025-0916",
+    "cashierId": "usr_caissier",
+    "cashierName": "Mariama Ciré Diallo",
+    "openedAt": "2025-11-03 08:00:00",
+    "initialCash": 150000,
+    "totalCashIn": 80000,
+    "totalCashOut": 25000,
+    "theoreticalBalance": 205000,
+    "actualCountedBalance": 205000,
+    "difference": 0,
+    "status": "ouverte",
+    "notes": "Session de caisse active - Guichet Principal Fann"
+  },
+  "cashSessionsHistory": [],
+  "expenses": [
+    {
+      "id": "exp_01",
+      "expenseNumber": "DEP-2025-00041",
+      "vendorName": "SENELEC - Société Nationale d Électricité",
+      "category": "services",
+      "description": "Facture électricité Moyenne Tension Campus Fann - Septembre",
+      "invoiceDate": "2025-09-28",
+      "dueDate": "2025-10-15",
+      "amount": 320000,
+      "paidAmount": 320000,
+      "stage": "decaissement_realise",
+      "paymentMethod": "virement",
+      "paidAt": "2025-10-12",
+      "recordedBy": "Babacar Sadikh Seck",
+      "approvedBy": "Dr. Aïssatou Ndiaye Diouf"
+    },
+    {
+      "id": "exp_02",
+      "expenseNumber": "DEP-2025-00042",
+      "vendorName": "SONATEL Orange Business Services",
+      "category": "services",
+      "description": "Liaison spécialisée Fibre Optique dédiée 100 Mbps",
+      "invoiceDate": "2025-10-01",
+      "dueDate": "2025-10-25",
+      "amount": 250000,
+      "paidAmount": 250000,
+      "stage": "decaissement_realise",
+      "paymentMethod": "virement",
+      "paidAt": "2025-10-20",
+      "recordedBy": "Babacar Sadikh Seck",
+      "approvedBy": "Dr. Aïssatou Ndiaye Diouf"
+    },
+    {
+      "id": "exp_03",
+      "expenseNumber": "DEP-2025-00043",
+      "vendorName": "Dr. Cheikh Ibrahima Kane (Vacations)",
+      "category": "vacation_enseignant",
+      "description": "Honoraires vacation Algorithmique & Structures de données (30h)",
+      "invoiceDate": "2025-11-01",
+      "dueDate": "2025-11-15",
+      "amount": 450000,
+      "paidAmount": 0,
+      "stage": "paiement_ordonne",
+      "recordedBy": "Babacar Sadikh Seck",
+      "approvedBy": "Dr. Aïssatou Ndiaye Diouf",
+      "notes": "Validation service fait par Direction Pédagogique"
+    },
+    {
+      "id": "exp_04",
+      "expenseNumber": "DEP-2025-00044",
+      "vendorName": "Société Immobilière Fann-Mer (Bailleur)",
+      "category": "loyer",
+      "description": "Loyer mensuel Campus Fann Résidence - Échéance Novembre",
+      "invoiceDate": "2025-11-01",
+      "dueDate": "2025-11-10",
+      "amount": 1200000,
+      "paidAmount": 0,
+      "stage": "dette_constatee",
+      "recordedBy": "Babacar Sadikh Seck",
+      "notes": "Échéance contractuelle au 10 du mois"
+    },
+    {
+      "id": "exp_05",
+      "expenseNumber": "DEP-2025-00045",
+      "vendorName": "Fournitures de Bureau & Informatique Dakar (FBID)",
+      "category": "fournitures",
+      "description": "Rames papier A4, toners laser et badges étudiants",
+      "invoiceDate": "2025-11-02",
+      "dueDate": "2025-11-20",
+      "amount": 185000,
+      "paidAmount": 0,
+      "stage": "prevue",
+      "recordedBy": "Fatou Kiné Sow"
+    }
+  ],
+  "modules": [
+    {
+      "id": "mod_algo",
+      "programId": "prog_lic_info_l1",
+      "ueCode": "UE-INFO-11",
+      "ueTitle": "Algorithmique & Programmation Fondamentale",
+      "moduleCode": "INFO-111",
+      "moduleTitle": "Algorithmique & Structures de Données en C/Python",
+      "credits": 6,
+      "coefficient": 3,
+      "hourlyVolume": 45,
+      "teacherId": "tch_kane"
+    },
+    {
+      "id": "mod_archi",
+      "programId": "prog_lic_info_l1",
+      "ueCode": "UE-INFO-11",
+      "ueTitle": "Architecture des Ordinateurs & Systèmes",
+      "moduleCode": "INFO-112",
+      "moduleTitle": "Architecture matérielle & Systèmes d exploitation Linux",
+      "credits": 4,
+      "coefficient": 2,
+      "hourlyVolume": 30,
+      "teacherId": "tch_kane"
+    },
+    {
+      "id": "mod_math",
+      "programId": "prog_lic_info_l1",
+      "ueCode": "UE-MATH-11",
+      "ueTitle": "Mathématiques pour l Ingénieur",
+      "moduleCode": "MATH-111",
+      "moduleTitle": "Algèbre linéaire & Analyse discrète",
+      "credits": 5,
+      "coefficient": 3,
+      "hourlyVolume": 40
+    },
+    {
+      "id": "mod_cca_audit",
+      "programId": "prog_mast_cca_m1",
+      "ueCode": "UE-CCA-71",
+      "ueTitle": "Audit Légal & Contractuel Approfondi",
+      "moduleCode": "CCA-711",
+      "moduleTitle": "Normes ISA & Pratique de l audit financier OHADA",
+      "credits": 6,
+      "coefficient": 4,
+      "hourlyVolume": 45
+    }
+  ],
+  "grades": [
+    {
+      "id": "grd_01",
+      "studentId": "stu_01",
+      "moduleId": "mod_algo",
+      "academicYearId": "year_2025_2026",
+      "continuousAssessmentNote": 15.5,
+      "examNote": 14,
+      "finalNote": 14.6,
+      "status": "publie",
+      "validatedBy": "Pr. Ousmane Diop",
+      "validatedAt": "2025-11-01"
+    },
+    {
+      "id": "grd_02",
+      "studentId": "stu_01",
+      "moduleId": "mod_archi",
+      "academicYearId": "year_2025_2026",
+      "continuousAssessmentNote": 13,
+      "examNote": 12.5,
+      "finalNote": 12.7,
+      "status": "valide",
+      "validatedBy": "Pr. Ousmane Diop",
+      "validatedAt": "2025-11-02"
+    }
+  ],
+  "timetables": [
+    {
+      "id": "time_01",
+      "programId": "prog_lic_info_l1",
+      "moduleId": "mod_algo",
+      "teacherId": "tch_kane",
+      "room": "Amphithéâtre Cheikh Anta Diop",
+      "dayOfWeek": "Lundi",
+      "startTime": "08:30",
+      "endTime": "11:30"
+    },
+    {
+      "id": "time_02",
+      "programId": "prog_lic_info_l1",
+      "moduleId": "mod_algo",
+      "teacherId": "tch_kane",
+      "room": "Salle TP Informatique 2",
+      "dayOfWeek": "Mercredi",
+      "startTime": "14:30",
+      "endTime": "17:30"
+    },
+    {
+      "id": "time_03",
+      "programId": "prog_lic_info_l1",
+      "moduleId": "mod_archi",
+      "teacherId": "tch_kane",
+      "room": "Salle 104 - Campus Fann",
+      "dayOfWeek": "Jeudi",
+      "startTime": "09:00",
+      "endTime": "12:00"
+    }
+  ],
+  "attendance": [
+    {
+      "id": "att_01",
+      "date": "2025-10-20",
+      "moduleId": "mod_algo",
+      "teacherId": "tch_kane",
+      "teacherName": "Dr. Cheikh Ibrahima Kane",
+      "sessionTitle": "Séance 1 : Complexité algorithmique et notation grand O",
+      "startTime": "08:30",
+      "endTime": "11:30",
+      "durationHours": 3,
+      "room": "Amphithéâtre Cheikh Anta Diop",
+      "programId": "prog_lic_info_l1",
+      "academicYearId": "year_2025_2026",
+      "topic": "Introduction à l’analyse asymptotique (O, Omega, Theta) et récursivité",
+      "status": "valide",
+      "signedAt": "2025-10-20 11:35:00",
+      "signedBy": "Dr. Cheikh Ibrahima Kane",
+      "notes": "Séance inaugurale. Bonne participation globale de la promotion.",
+      "attendees": [
+        {
+          "studentId": "stu_01",
+          "status": "present"
+        },
+        {
+          "studentId": "stu_05",
+          "status": "present"
+        },
+        {
+          "studentId": "stu_06",
+          "status": "retard",
+          "arrivalDelayMinutes": 15,
+          "justificationNote": "Embouteillages VDN"
+        },
+        {
+          "studentId": "stu_07",
+          "status": "absent_justifie",
+          "justificationNote": "Certificat médical délivré par le centre médico-social"
+        },
+        {
+          "studentId": "stu_08",
+          "status": "present"
+        }
+      ]
+    },
+    {
+      "id": "att_02",
+      "date": "2025-10-27",
+      "moduleId": "mod_algo",
+      "teacherId": "tch_kane",
+      "teacherName": "Dr. Cheikh Ibrahima Kane",
+      "sessionTitle": "Séance 2 : Tableaux dynamiques et pointeurs en C",
+      "startTime": "08:30",
+      "endTime": "11:30",
+      "durationHours": 3,
+      "room": "Amphithéâtre Cheikh Anta Diop",
+      "programId": "prog_lic_info_l1",
+      "academicYearId": "year_2025_2026",
+      "topic": "Allocation dynamique malloc/free, arithmétique des pointeurs",
+      "status": "valide",
+      "signedAt": "2025-10-27 11:40:00",
+      "signedBy": "Dr. Cheikh Ibrahima Kane",
+      "notes": "Exercices pratiques sur machine avec valgrind.",
+      "attendees": [
+        {
+          "studentId": "stu_01",
+          "status": "present"
+        },
+        {
+          "studentId": "stu_05",
+          "status": "present"
+        },
+        {
+          "studentId": "stu_06",
+          "status": "present"
+        },
+        {
+          "studentId": "stu_07",
+          "status": "absent_injustifie"
+        },
+        {
+          "studentId": "stu_08",
+          "status": "present"
+        }
+      ]
+    },
+    {
+      "id": "att_03",
+      "date": "2025-11-03",
+      "moduleId": "mod_algo",
+      "teacherId": "tch_kane",
+      "teacherName": "Dr. Cheikh Ibrahima Kane",
+      "sessionTitle": "Séance 3 : Listes chaînées simples et doublement chaînées",
+      "startTime": "14:30",
+      "endTime": "17:30",
+      "durationHours": 3,
+      "room": "Salle TP Informatique 2",
+      "programId": "prog_lic_info_l1",
+      "academicYearId": "year_2025_2026",
+      "topic": "Implémentation pratique des structures auto-référencées et manipulation de nœuds",
+      "status": "brouillon",
+      "attendees": [
+        {
+          "studentId": "stu_01",
+          "status": "present"
+        },
+        {
+          "studentId": "stu_05",
+          "status": "present"
+        },
+        {
+          "studentId": "stu_06",
+          "status": "absent_injustifie"
+        },
+        {
+          "studentId": "stu_07",
+          "status": "present"
+        },
+        {
+          "studentId": "stu_08",
+          "status": "retard",
+          "arrivalDelayMinutes": 20,
+          "justificationNote": "Retard transport"
+        }
+      ]
+    }
+  ],
+  "auditLogs": [
+    {
+      "id": "aud_1789573320066_471",
+      "timestamp": "2026-09-16 15:42:00",
+      "userId": "usr_admin",
+      "userName": "Modou Diouf",
+      "userRole": "admin",
+      "action": "SUPPRESSION_EMARGEMENT",
+      "entity": "presence",
+      "entityId": "att_1789573311530",
+      "details": "Suppression de la séance \"Séance 4 : Piles, Files et Notations Polonaises\""
+    },
+    {
+      "id": "aud_1789573315093_363",
+      "timestamp": "2026-09-16 15:41:55",
+      "userId": "usr_admin",
+      "userName": "Modou Diouf",
+      "userRole": "enseignant",
+      "action": "SIGNATURE_FEUILLE_PRESENCE",
+      "entity": "presence",
+      "entityId": "att_1789573311530",
+      "details": "Signature & validation officielle de la feuille d'émargement \"Séance 4 : Piles, Files et Notations Polonaises\" par Dr. Cheikh Ibrahima Kane"
+    },
+    {
+      "id": "aud_1789573311530_826",
+      "timestamp": "2026-09-16 15:41:51",
+      "userId": "usr_admin",
+      "userName": "Modou Diouf",
+      "userRole": "enseignant",
+      "action": "EMARGEMENT_COURS",
+      "entity": "presence",
+      "entityId": "att_1789573311530",
+      "details": "Émargement séance \"Séance 4 : Piles, Files et Notations Polonaises\" (2025-11-10) par Modou Diouf : 5/5 présents"
+    },
+    {
+      "id": "aud_01",
+      "timestamp": "2025-09-12 11:32:15",
+      "userId": "usr_caissier",
+      "userName": "Mariama Ciré Diallo",
+      "userRole": "caissier",
+      "action": "ENCAISSEMENT",
+      "entity": "paiement",
+      "entityId": "REC-2025-00088",
+      "details": "Encaissement Wave de 275 000 FCFA pour Mouhamed Lamine Bâ (Inscription)"
+    },
+    {
+      "id": "aud_02",
+      "timestamp": "2025-09-12 11:20:00",
+      "userId": "usr_scolarite",
+      "userName": "Fatou Kiné Sow",
+      "userRole": "scolarite",
+      "action": "INSCRIPTION",
+      "entity": "inscription",
+      "entityId": "enr_01",
+      "details": "Inscription validée en L1 Informatique pour Bâ Mouhamed Lamine. Option mensualité."
+    },
+    {
+      "id": "aud_03",
+      "timestamp": "2025-09-10 16:45:00",
+      "userId": "usr_dg",
+      "userName": "Dr. Aïssatou Ndiaye Diouf",
+      "userRole": "dg",
+      "action": "OCTROI_REMISE",
+      "entity": "inscription",
+      "entityId": "enr_01",
+      "details": "Approbation bourse d excellence de 100 000 FCFA (Mention Bac S2)",
+      "reason": "Excellence académique et dossier social"
+    },
+    {
+      "id": "aud_04",
+      "timestamp": "2025-11-03 08:00:00",
+      "userId": "usr_caissier",
+      "userName": "Mariama Ciré Diallo",
+      "userRole": "caissier",
+      "action": "OUVERTURE_CAISSE",
+      "entity": "caisse",
+      "entityId": "CSH-2025-0916",
+      "details": "Ouverture de caisse avec fond initial de 150 000 FCFA"
+    },
+    {
+      "id": "aud_05",
+      "timestamp": "2025-11-03 09:45:00",
+      "userId": "usr_caissier",
+      "userName": "Mariama Ciré Diallo",
+      "userRole": "caissier",
+      "action": "ENCAISSEMENT_PARTIEL",
+      "entity": "paiement",
+      "entityId": "REC-2025-00090",
+      "details": "Acompte Orange Money de 40 000 FCFA sur mensualité de 80 000 FCFA (FAC-2025-00103). Reste dû : 40 000 FCFA."
+    }
+  ]
+}
