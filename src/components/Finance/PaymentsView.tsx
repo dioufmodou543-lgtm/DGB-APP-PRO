@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AlertCircle,
   Ban,
@@ -21,9 +21,18 @@ import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { formatFCFA, numberToFrenchWords } from '../../services/currency';
 import { PaymentMethod, PaymentReceipt } from '../../types';
+import { downloadCSV, todayStamp } from '../../utils/csv';
 
 export const PaymentsView: React.FC = () => {
-  const { receipts, students, invoices, recordPayment, cancelPayment } = useApp();
+  const {
+    receipts,
+    students,
+    invoices,
+    recordPayment,
+    cancelPayment,
+    selectedReceipt: receiptFromSearch,
+    setSelectedReceipt: setReceiptFromSearch,
+  } = useApp();
   const { activeRole } = useAuth();
 
   const [search, setSearch] = useState('');
@@ -31,6 +40,36 @@ export const PaymentsView: React.FC = () => {
   const [selectedReceipt, setSelectedReceipt] = useState<PaymentReceipt | null>(null);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+
+  // Ouverture directe d'un reçu depuis la recherche globale (Ctrl+K)
+  useEffect(() => {
+    if (receiptFromSearch) {
+      setSelectedReceipt(receiptFromSearch);
+      setReceiptFromSearch(null);
+    }
+  }, [receiptFromSearch]);
+
+  const exportCSV = () => {
+    downloadCSV<PaymentReceipt>(`encaissements_${todayStamp()}`, filteredReceipts, [
+      { header: 'N° reçu', value: (r) => r.receiptNumber },
+      { header: 'Date', value: (r) => r.paymentDate },
+      { header: 'Matricule', value: (r) => students.find((s) => s.id === r.studentId)?.matricule || '' },
+      {
+        header: 'Étudiant',
+        value: (r) => {
+          const s = students.find((st) => st.id === r.studentId);
+          return s ? `${s.lastName} ${s.firstName}` : r.studentId;
+        },
+      },
+      { header: 'Mode', value: (r) => r.paymentMethod },
+      { header: 'Référence transaction', value: (r) => r.transactionRef || '' },
+      { header: 'Montant (FCFA)', value: (r) => r.amount },
+      { header: 'Statut', value: (r) => r.status },
+      { header: 'Factures soldées', value: (r) => (r.allocations || []).map((a) => `${a.invoiceNumber} (${a.amount})`).join(' | ') },
+      { header: 'Saisi par', value: (r) => r.recordedBy },
+      { header: 'Motif annulation', value: (r) => r.cancellationDetails?.reason || '' },
+    ]);
+  };
 
   // Mobile Money Simulator Modal State
   const [isMMModalOpen, setIsMMModalOpen] = useState(false);
@@ -103,6 +142,13 @@ export const PaymentsView: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-2">
+          <button
+            onClick={exportCSV}
+            className="px-3 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 text-xs font-medium flex items-center space-x-1.5 bg-white"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Exporter (Excel)</span>
+          </button>
           <button
             onClick={() => {
               setMmPendingStep('initial');

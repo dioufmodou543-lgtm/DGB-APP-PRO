@@ -230,6 +230,127 @@ export function runFinancialAndIntegrityTests(): {
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // CONTRÔLES D'INTÉGRITÉ SUR LES DONNÉES RÉELLES DE LA BASE
+  // ---------------------------------------------------------------------------
+  const store = getStore();
+  const check = (
+    id: string,
+    name: string,
+    category: string,
+    fn: () => { ok: boolean; message: string; details?: any }
+  ) => {
+    try {
+      const r = fn();
+      results.push({ id, name, category, status: r.ok ? 'passed' : 'failed', message: r.message, details: r.details });
+    } catch (err: any) {
+      results.push({ id, name, category, status: 'failed', message: err.message });
+    }
+  };
+
+  const findDuplicates = (values: (string | undefined)[]) => {
+    const seen = new Set<string>();
+    const dups = new Set<string>();
+    for (const v of values) {
+      if (!v) continue;
+      if (seen.has(v)) dups.add(v);
+      seen.add(v);
+    }
+    return [...dups];
+  };
+
+  // TEST 8: Unicité des numéros de pièces
+  check('test_unique_numbers', 'Unicité des numéros de pièces (matricules, factures, reçus, dépenses, diplômes)', 'Traçabilité', () => {
+    const dups = {
+      matricules: findDuplicates(store.students.map((s) => s.matricule)),
+      factures: findDuplicates(store.invoices.map((i) => i.invoiceNumber)),
+      recus: findDuplicates(store.receipts.map((r) => r.receiptNumber)),
+      depenses: findDuplicates(store.expenses.map((e) => e.expenseNumber)),
+      diplomes: findDuplicates((store.diplomas || []).map((d) => d.serialNumber)),
+    };
+    const total = Object.values(dups).reduce((n, l) => n + l.length, 0);
+    return {
+      ok: total === 0,
+      message: total === 0 ? 'Aucun numéro de pièce en double dans la base.' : `${total} numéro(s) de pièce en double détecté(s).`,
+      details: dups,
+    };
+  });
+
+  // TEST 9: Cohérence arithmétique des factures
+  check('test_invoice_arithmetic', 'Cohérence des factures (net = brut − remise, reste dû = net − payé)', 'Facturation & Reste dû', () => {
+    const anomalies = store.invoices
+      .filter(
+        (i) =>
+          i.netAmount !== calculateNetAmount(i.grossAmount, i.discountShare) ||
+          i.balanceDue !== calculateBalanceDue(i.netAmount, i.paidAmount) ||
+          i.paidAmount > i.netAmount ||
+          i.paidAmount < 0
+      )
+      .map((i) => i.invoiceNumber);
+    return {
+      ok: anomalies.length === 0,
+      message:
+        anomalies.length === 0
+          ? `${store.invoices.length} factures contrôlées : montants cohérents.`
+          : `${anomalies.length} facture(s) incohérente(s).`,
+      details: { anomalies },
+    };
+  });
+
+  // TEST 10: Cohérence de la session de caisse
+  check('test_cash_balance', 'Solde théorique de caisse = fond + entrées − sorties', 'Caisse', () => {
+    const c = store.cashSession;
+    const expected = c.initialCash + c.totalCashIn - c.totalCashOut;
+    return {
+      ok: c.theoreticalBalance === expected && expected >= 0,
+      message: `Session ${c.sessionNumber} : théorique ${c.theoreticalBalance} FCFA, attendu ${expected} FCFA.`,
+      details: { ...c, expected },
+    };
+  });
+
+  // TEST 11: Statuts de retard à jour
+  check('test_overdue_status_sync', 'Statut « en retard » appliqué à toutes les échéances dépassées', 'Recouvrement', () => {
+    const today = new Date().toISOString().split('T')[0];
+    const missed = store.invoices
+      .filter((i) => i.balanceDue > 0 && i.dueDate < today && i.status !== 'en_retard')
+      .map((i) => i.invoiceNumber);
+    return {
+      ok: missed.length === 0,
+      message:
+        missed.length === 0
+          ? 'Toutes les échéances impayées dépassées sont qualifiées « en retard ».'
+          : `${missed.length} échéance(s) dépassée(s) sans statut « en retard ».`,
+      details: { missed },
+    };
+  });
+
+  // TEST 12: Notes dans l'intervalle réglementaire
+  check('test_grade_range', 'Notes comprises entre 0 et 20', 'Pédagogie LMD', () => {
+    const inRange = (n?: number) => n === undefined || n === null || (n >= 0 && n <= 20);
+    const bad = store.grades
+      .filter((g) => !inRange(g.continuousAssessmentNote) || !inRange(g.examNote) || !inRange(g.catchUpExamNote) || !inRange(g.finalNote))
+      .map((g) => g.id);
+    return {
+      ok: bad.length === 0,
+      message: bad.length === 0 ? `${store.grades.length} notes contrôlées.` : `${bad.length} note(s) hors de l intervalle 0–20.`,
+      details: { bad },
+    };
+  });
+
+  // TEST 13: Reçus rattachés à des étudiants et factures existants
+  check('test_receipt_links', 'Chaque reçu est rattaché à un étudiant et à une facture existants', 'Traçabilité', () => {
+    const studentIds = new Set(store.students.map((s) => s.id));
+    const invoiceIds = new Set(store.invoices.map((i) => i.id));
+    const orphans = store.receipts
+      .filter((r) => !studentIds.has(r.studentId) || (r.invoiceScheduleId && !invoiceIds.has(r.invoiceScheduleId)))
+      .map((r) => r.receiptNumber);
+    return {
+      ok: orphans.length === 0,
+      message: orphans.length === 0 ? `${store.receipts.length} reçus rattachés correctement.` : `${orphans.length} reçu(s) orphelin(s).`,
+      details: { orphans },
+    };
+  });
+
   const passed = results.filter((r) => r.status === 'passed').length;
   const failed = results.filter((r) => r.status === 'failed').length;
 

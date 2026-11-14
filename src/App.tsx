@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { X } from 'lucide-react';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { PriorityFlowModal } from './components/PriorityFlow/PriorityFlowModal';
@@ -8,6 +9,9 @@ import { InvoicesView } from './components/Finance/InvoicesView';
 import { PaymentsView } from './components/Finance/PaymentsView';
 import { CashRegisterView } from './components/Finance/CashRegisterView';
 import { ExpensesView } from './components/Finance/ExpensesView';
+import { RecoveryView } from './components/Finance/RecoveryView';
+import { CommandPalette } from './components/Common/CommandPalette';
+import { viewsForRole } from './navigation';
 import { TreasuryDashboard } from './components/Finance/TreasuryDashboard';
 import { PedagogyView } from './components/Pedagogy/PedagogyView';
 import { GradesView } from './components/Pedagogy/GradesView';
@@ -19,11 +23,33 @@ import { AuditView } from './components/Audit/AuditView';
 import { TestRunnerView } from './components/Testing/TestRunnerView';
 import { SettingsView } from './components/Settings/SettingsView';
 import { OfflineIndicator } from './components/PWA/OfflineIndicator';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
 
 const AppContent: React.FC = () => {
-  const { activeView, isLoading, error } = useApp();
+  const { activeView, setActiveView, isLoading, error, clearError } = useApp();
+  const { activeRole } = useAuth();
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  // Raccourci clavier de recherche globale : Ctrl+K / Cmd+K
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsSearchOpen((o) => !o);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Garde d'accès : un rôle ne peut pas rester sur un module qui ne lui est pas ouvert
+  useEffect(() => {
+    const allowed = viewsForRole(activeRole).some((v) => v.id === activeView);
+    if (!allowed && activeView !== 'dashboard') {
+      setActiveView('dashboard');
+    }
+  }, [activeRole, activeView]);
 
   const renderCurrentView = () => {
     switch (activeView) {
@@ -39,6 +65,8 @@ const AppContent: React.FC = () => {
         return <PaymentsView />;
       case 'cash':
         return <CashRegisterView />;
+      case 'recovery':
+        return <RecoveryView />;
       case 'expenses':
         return <ExpensesView />;
       case 'treasury':
@@ -67,7 +95,7 @@ const AppContent: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans text-slate-800 antialiased selection:bg-emerald-500 selection:text-white">
       {/* Top Application Header */}
-      <Header />
+      <Header onOpenSearch={() => setIsSearchOpen(true)} />
 
       {/* Main Layout Body */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
@@ -76,8 +104,14 @@ const AppContent: React.FC = () => {
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           <div className="max-w-7xl mx-auto space-y-6">
             {error && (
-              <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center justify-between">
+              <div
+                role="alert"
+                className="sticky top-2 z-30 p-4 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center justify-between gap-3 shadow-sm"
+              >
                 <span>{error}</span>
+                <button onClick={clearError} className="p-1 rounded hover:bg-rose-100 shrink-0" aria-label="Fermer le message">
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
             )}
 
@@ -98,6 +132,9 @@ const AppContent: React.FC = () => {
 
       {/* Globally Mounted 9-Step Priority Flow Modal (Section 5) */}
       <PriorityFlowModal />
+
+      {/* Recherche globale (Ctrl+K) */}
+      <CommandPalette open={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   Building2,
@@ -12,36 +12,137 @@ import {
   Save,
   Settings,
   ShieldCheck,
+  DatabaseBackup,
+  Download,
+  Upload,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 
 export const SettingsView: React.FC = () => {
-  const { academicYears, closeAcademicYear } = useApp();
+  const { academicYears, closeAcademicYear, config, updateConfig, downloadBackup, restoreBackup } = useApp();
+  const { activeRole } = useAuth();
+  const isAdmin = activeRole === 'admin';
 
   const [savedMessage, setSavedMessage] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Institution settings state
-  const [instName, setInstName] = useState(
-    'Institut Supérieur des Métiers du Numérique et du Management'
-  );
-  const [sigle, setSigle] = useState('ISMNM');
-  const [ninea, setNinea] = useState('007892341 2V2');
-  const [rc, setRc] = useState('SN-DKR-2018-B-14290');
-  const [arrete, setArrete] = useState('Arrêté Ministériel MESRI N° 004128/MESRI/DGES/DESP');
-  const [address, setAddress] = useState('Rue Aimé Césaire, Fann Résidence, Dakar, Sénégal');
-  const [phone, setPhone] = useState('+221 33 825 40 40');
-  const [email, setEmail] = useState('direction@ismnm.edu.sn');
+  // Identité légale : initialisée depuis la configuration réelle de l'établissement
+  const [instName, setInstName] = useState(config.name);
+  const [sigle, setSigle] = useState(config.acronym);
+  const [ninea, setNinea] = useState(config.ninea);
+  const [rc, setRc] = useState(config.rc);
+  const [arrete, setArrete] = useState(config.accreditationNumber || '');
+  const [address, setAddress] = useState(config.address);
+  const [phone, setPhone] = useState(config.phone);
+  const [email, setEmail] = useState(config.email);
 
-  // Numbering prefixes
-  const [prefixStudent, setPrefixStudent] = useState('ETU-');
-  const [prefixInvoice, setPrefixInvoice] = useState('FAC-');
-  const [prefixReceipt, setPrefixReceipt] = useState('REC-');
-  const [prefixExpense, setPrefixExpense] = useState('DEP-');
+  // Préfixes de numérotation (le serveur ajoute « -ANNÉE-NUMÉRO »)
+  const [prefixStudent, setPrefixStudent] = useState(config.documentNumbering.matriculePrefix);
+  const [prefixInvoice, setPrefixInvoice] = useState(config.documentNumbering.invoicePrefix);
+  const [prefixReceipt, setPrefixReceipt] = useState(config.documentNumbering.receiptPrefix);
+  const [prefixExpense, setPrefixExpense] = useState(config.documentNumbering.expensePrefix);
 
-  const handleSaveSettings = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavedMessage(true);
-    setTimeout(() => setSavedMessage(false), 3000);
+  // Resynchronisation si la configuration est rechargée depuis le serveur
+  useEffect(() => {
+    setInstName(config.name);
+    setSigle(config.acronym);
+    setNinea(config.ninea);
+    setRc(config.rc);
+    setArrete(config.accreditationNumber || '');
+    setAddress(config.address);
+    setPhone(config.phone);
+    setEmail(config.email);
+    setPrefixStudent(config.documentNumbering.matriculePrefix);
+    setPrefixInvoice(config.documentNumbering.invoicePrefix);
+    setPrefixReceipt(config.documentNumbering.receiptPrefix);
+    setPrefixExpense(config.documentNumbering.expensePrefix);
+  }, [config]);
+
+  const cleanPrefix = (p: string) => p.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  const handleSaveSettings = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    setSaveError(null);
+    const prefixes = [prefixStudent, prefixInvoice, prefixReceipt, prefixExpense].map(cleanPrefix);
+    if (!instName.trim() || !sigle.trim()) {
+      setSaveError('La raison sociale et le sigle sont obligatoires.');
+      return;
+    }
+    if (prefixes.some((p) => p.length < 2)) {
+      setSaveError('Chaque préfixe de numérotation doit contenir au moins 2 caractères (lettres ou chiffres).');
+      return;
+    }
+    if (new Set(prefixes).size !== prefixes.length) {
+      setSaveError('Les préfixes de numérotation doivent être distincts.');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await updateConfig({
+        name: instName.trim(),
+        acronym: sigle.trim(),
+        ninea: ninea.trim(),
+        rc: rc.trim(),
+        accreditationNumber: arrete.trim(),
+        address: address.trim(),
+        phone: phone.trim(),
+        email: email.trim(),
+        documentNumbering: {
+          matriculePrefix: prefixes[0],
+          invoicePrefix: prefixes[1],
+          receiptPrefix: prefixes[2],
+          expensePrefix: prefixes[3],
+        },
+      });
+      setSavedMessage(true);
+      setTimeout(() => setSavedMessage(false), 3000);
+    } catch (err: any) {
+      setSaveError(err.message || 'Erreur lors de l enregistrement');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Sauvegarde & restauration
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupMessage, setBackupMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleBackup = async () => {
+    setBackupBusy(true);
+    setBackupMessage(null);
+    try {
+      await downloadBackup();
+      setBackupMessage({ type: 'ok', text: 'Sauvegarde téléchargée. Conservez-la hors de ce serveur (clé USB, cloud).' });
+    } catch (err: any) {
+      setBackupMessage({ type: 'error', text: err.message || 'Sauvegarde impossible' });
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const handleRestore = async (file: File | undefined) => {
+    if (!file) return;
+    const ok = window.confirm(
+      `Restaurer la sauvegarde « ${file.name} » ?\n\nToutes les données actuelles seront remplacées. Téléchargez d abord une sauvegarde de l état actuel si nécessaire.`
+    );
+    if (!ok) return;
+    setBackupBusy(true);
+    setBackupMessage(null);
+    try {
+      const summary = await restoreBackup(file);
+      setBackupMessage({
+        type: 'ok',
+        text: `Restauration réussie : ${summary.students} étudiants et ${summary.invoices} factures chargés.`,
+      });
+    } catch (err: any) {
+      setBackupMessage({ type: 'error', text: err.message || 'Restauration impossible' });
+    } finally {
+      setBackupBusy(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const handleCloseYear = async (yearId: string) => {
@@ -69,6 +170,12 @@ export const SettingsView: React.FC = () => {
           </p>
         </div>
 
+        {saveError && (
+          <div className="px-3 py-1.5 bg-rose-100 text-rose-800 rounded-lg text-xs font-semibold flex items-center space-x-1.5">
+            <AlertCircle className="w-4 h-4" />
+            <span>{saveError}</span>
+          </div>
+        )}
         {savedMessage && (
           <div className="px-3 py-1.5 bg-emerald-100 text-emerald-800 rounded-lg text-xs font-semibold flex items-center space-x-1.5 animate-fade-in">
             <CheckCircle2 className="w-4 h-4" />
@@ -97,7 +204,7 @@ export const SettingsView: React.FC = () => {
                 </div>
                 <div>
                   <div className="font-bold text-slate-900 text-sm">
-                    Année Universitaire {yr.name}
+                    Année Universitaire {yr.code}
                     {yr.isCurrent && (
                       <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
                         En cours
@@ -145,10 +252,11 @@ export const SettingsView: React.FC = () => {
           </div>
           <button
             type="submit"
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 shadow-xs"
+            disabled={isSaving}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 shadow-xs"
           >
             <Save className="w-4 h-4" />
-            <span>Enregistrer</span>
+            <span>{isSaving ? 'Enregistrement…' : 'Enregistrer'}</span>
           </button>
         </div>
 
@@ -228,8 +336,23 @@ export const SettingsView: React.FC = () => {
       {/* Numbering Rules Form */}
       <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-2xs space-y-4">
         <div className="border-b border-slate-100 pb-3">
-          <h2 className="text-sm font-bold text-slate-900">Règles de Numérotation Séquentielle des Pièces</h2>
-          <p className="text-xs text-slate-500">Préfixes appliqués aux dossiers, factures, reçus et décaissements</p>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Règles de Numérotation Séquentielle des Pièces</h2>
+              <p className="text-xs text-slate-500">
+                Préfixes appliqués aux nouvelles pièces (format PRÉFIXE-ANNÉE-NUMÉRO). Les pièces déjà émises ne sont jamais renumérotées.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleSaveSettings()}
+              disabled={isSaving}
+              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 shrink-0"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>Enregistrer</span>
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
@@ -241,7 +364,7 @@ export const SettingsView: React.FC = () => {
               onChange={(e) => setPrefixStudent(e.target.value)}
               className="w-full px-2.5 py-1.5 border rounded font-mono font-bold bg-white text-xs"
             />
-            <span className="text-[10px] text-slate-400 mt-1 block">Ex: ETU-2025-001</span>
+            <span className="text-[10px] text-slate-400 mt-1 block">Ex : {cleanPrefix(prefixStudent)}-2025-0001</span>
           </div>
 
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
@@ -252,7 +375,7 @@ export const SettingsView: React.FC = () => {
               onChange={(e) => setPrefixInvoice(e.target.value)}
               className="w-full px-2.5 py-1.5 border rounded font-mono font-bold bg-white text-xs"
             />
-            <span className="text-[10px] text-slate-400 mt-1 block">Ex: FAC-2025-0042</span>
+            <span className="text-[10px] text-slate-400 mt-1 block">Ex : {cleanPrefix(prefixInvoice)}-2025-00042</span>
           </div>
 
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
@@ -263,7 +386,7 @@ export const SettingsView: React.FC = () => {
               onChange={(e) => setPrefixReceipt(e.target.value)}
               className="w-full px-2.5 py-1.5 border rounded font-mono font-bold bg-white text-xs"
             />
-            <span className="text-[10px] text-slate-400 mt-1 block">Ex: REC-2025-0103</span>
+            <span className="text-[10px] text-slate-400 mt-1 block">Ex : {cleanPrefix(prefixReceipt)}-2025-00103</span>
           </div>
 
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
@@ -274,9 +397,68 @@ export const SettingsView: React.FC = () => {
               onChange={(e) => setPrefixExpense(e.target.value)}
               className="w-full px-2.5 py-1.5 border rounded font-mono font-bold bg-white text-xs"
             />
-            <span className="text-[10px] text-slate-400 mt-1 block">Ex: DEP-2025-008</span>
+            <span className="text-[10px] text-slate-400 mt-1 block">Ex : {cleanPrefix(prefixExpense)}-2025-00008</span>
           </div>
         </div>
+      </div>
+
+      {/* Sauvegarde & restauration */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-2xs space-y-4">
+        <div className="border-b border-slate-100 pb-3 flex items-start gap-3">
+          <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center shrink-0">
+            <DatabaseBackup className="w-4 h-4" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">Sauvegarde & Restauration de la base</h2>
+            <p className="text-xs text-slate-500">
+              Exportez régulièrement l intégralité des données (dossiers, factures, reçus, notes, audit) dans un fichier
+              JSON. Recommandé : une sauvegarde quotidienne conservée hors du serveur.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <button
+            onClick={handleBackup}
+            disabled={backupBusy}
+            className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold"
+          >
+            <Download className="w-4 h-4 mr-1.5" />
+            Télécharger une sauvegarde complète
+          </button>
+          {isAdmin && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(e) => handleRestore(e.target.files?.[0])}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={backupBusy}
+                className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 disabled:opacity-50 text-xs font-semibold"
+              >
+                <Upload className="w-4 h-4 mr-1.5" />
+                Restaurer depuis un fichier…
+              </button>
+            </>
+          )}
+        </div>
+        {!isAdmin && (
+          <p className="text-[11px] text-slate-500">La restauration est réservée à l administrateur.</p>
+        )}
+        {backupMessage && (
+          <div
+            className={`p-2.5 rounded-lg text-xs ${
+              backupMessage.type === 'ok'
+                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                : 'bg-rose-50 text-rose-800 border border-rose-200'
+            }`}
+          >
+            {backupMessage.text}
+          </div>
+        )}
       </div>
     </div>
   );

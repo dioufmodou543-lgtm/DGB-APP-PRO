@@ -15,32 +15,39 @@ import {
   PaymentMethod,
   PaymentPlanType,
   PaymentReceipt,
+  PaymentReminder,
+  ReminderChannel,
+  ReminderLevel,
   StudentAdmission,
   TimetableSlot,
   UserRole,
   VendorExpense,
 } from '../src/types/index';
-import { getStore, logAudit, persistStore, resetStore } from './db';
+import { AppStore, getStore, logAudit, persistStore, replaceStore, resetStore } from './db';
+import {
+  formatSequence,
+  getActor,
+  isNonEmptyString,
+  nextSequence,
+  nowTimestamp,
+  parseGrade,
+  parsePositiveFcfa,
+  refreshDerivedStatuses,
+  requireRoles,
+  ROLES,
+  scopeStoreForActor,
+  secureToken,
+  todayISO,
+} from './security';
 import { runFinancialAndIntegrityTests } from './tests';
 
 export const apiRouter = Router();
 
-// Middleware helper to extract current user/role
-function getActor(req: Request) {
-  const store = getStore();
-  const userId = (req.headers['x-user-id'] as string) || 'usr_admin';
-  const role = (req.headers['x-user-role'] as UserRole) || 'admin';
-  const user = store.users.find((u) => u.id === userId) || store.users[0];
-  return {
-    id: user.id,
-    name: user.name,
-    role: role || user.activeRole || 'admin',
-  };
-}
-
 // 1. BOOTSTRAP / FULL STORE
-apiRouter.get('/bootstrap', (_req: Request, res: Response) => {
-  res.json({ success: true, data: getStore() });
+apiRouter.get('/bootstrap', (req: Request, res: Response) => {
+  const store = getStore();
+  if (refreshDerivedStatuses(store)) persistStore();
+  res.json({ success: true, data: scopeStoreForActor(store, getActor(req)) });
 });
 
 // 2. CONFIGURATION UPDATE
@@ -50,27 +57,37 @@ apiRouter.put('/config', (req: Request, res: Response) => {
     return res.status(403).json({ error: 'Accès réservé à l administration et la direction générale' });
   }
   const store = getStore();
-  store.config = { ...store.config, ...req.body };
+  // L'identifiant de configuration ne peut pas être écrasé par le client
+  const { id: _ignoredId, ...updates } = req.body || {};
+  store.config = { ...store.config, ...updates };
   logAudit(actor, 'MODIFICATION_CONFIG', 'parametre', store.config.id, 'Mise à jour des paramètres de l établissement');
   persistStore();
   res.json({ success: true, data: store.config });
 });
 
 // 3. STUDENT ADMISSIONS & DOSSIERS
-apiRouter.post('/students', (req: Request, res: Response) => {
+apiRouter.post('/students', requireRoles(...ROLES.SCOLARITE), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const currentYear = store.academicYears.find((y) => y.isCurrent)?.code.split('-')[0] || '2025';
 
-  // Generate unique matricule: e.g. ISMNM-2025-0018
-  const count = store.students.length + 1;
-  const matricule = `${store.config.documentNumbering.matriculePrefix}-${currentYear}-${String(count).padStart(4, '0')}`;
+  if (!isNonEmptyString(req.body.firstName) || !isNonEmptyString(req.body.lastName)) {
+    return res.status(400).json({ error: 'Le prénom et le nom sont obligatoires' });
+  }
+  const cni = String(req.body.cniPassport || '').trim();
+  if (cni && store.students.some((s) => s.cniPassport && s.cniPassport.trim().toUpperCase() === cni.toUpperCase())) {
+    return res.status(409).json({ error: `Un dossier existe déjà avec la pièce d identité ${cni} (doublon)` });
+  }
+
+  // Matricule unique basé sur le plus grand numéro existant : ex. ISMNM-2025-0018
+  const matPrefix = `${store.config.documentNumbering.matriculePrefix}-${currentYear}-`;
+  const matricule = formatSequence(matPrefix, nextSequence(store.students.map((s) => s.matricule), matPrefix), 4);
 
   const newStudent: StudentAdmission = {
     id: `stu_${Date.now()}`,
     matricule,
-    firstName: req.body.firstName,
-    lastName: req.body.lastName,
+    firstName: req.body.firstName.trim(),
+    lastName: req.body.lastName.trim(),
     gender: req.body.gender || 'M',
     birthDate: req.body.birthDate,
     birthPlace: req.body.birthPlace,
@@ -98,12 +115,16 @@ apiRouter.post('/students', (req: Request, res: Response) => {
   res.status(201).json({ success: true, data: newStudent });
 });
 
-apiRouter.put('/students/:id/status', (req: Request, res: Response) => {
+apiRouter.put('/students/:id/status', requireRoles(...ROLES.SCOLARITE), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const student = store.students.find((s) => s.id === req.params.id);
   if (!student) return res.status(404).json({ error: 'Étudiant non trouvé' });
 
+  const allowedStatuses: StudentAdmission['status'][] = ['candidat', 'admis', 'rejete', 'inscrit', 'suspendu'];
+  if (!allowedStatuses.includes(req.body.status)) {
+    return res.status(400).json({ error: 'Statut de dossier invalide' });
+  }
   student.status = req.body.status;
   if (req.body.status === 'admis') {
     student.admissionDecisionDate = new Date().toISOString().split('T')[0];
@@ -117,8 +138,38 @@ apiRouter.put('/students/:id/status', (req: Request, res: Response) => {
   res.json({ success: true, data: student });
 });
 
+// 3.B MISE À JOUR D'UN DOSSIER ÉTUDIANT (coordonnées, tuteur, pièces)
+apiRouter.put('/students/:id', requireRoles(...ROLES.SCOLARITE), (req: Request, res: Response) => {
+  const actor = getActor(req);
+  const store = getStore();
+  const student = store.students.find((s) => s.id === req.params.id);
+  if (!student) return res.status(404).json({ error: 'Étudiant non trouvé' });
+
+  const editable: (keyof StudentAdmission)[] = [
+    'firstName', 'lastName', 'gender', 'birthDate', 'birthPlace', 'nationality', 'cniPassport',
+    'email', 'phone', 'parentName', 'parentPhone', 'address', 'city', 'admissionNotes', 'documents',
+  ];
+  const changes: string[] = [];
+  for (const key of editable) {
+    if (req.body[key] === undefined) continue;
+    if ((key === 'firstName' || key === 'lastName') && !isNonEmptyString(req.body[key])) {
+      return res.status(400).json({ error: 'Le prénom et le nom ne peuvent pas être vides' });
+    }
+    if (JSON.stringify(student[key]) !== JSON.stringify(req.body[key])) {
+      (student as any)[key] = req.body[key];
+      changes.push(String(key));
+    }
+  }
+
+  if (changes.length > 0) {
+    logAudit(actor, 'MODIFICATION_DOSSIER', 'etudiant', student.id, `Champs modifiés : ${changes.join(', ')}`, req.body.reason);
+    persistStore();
+  }
+  res.json({ success: true, data: student });
+});
+
 // 4. ENROLLMENT & AUTOMATIC INVOICE GENERATION
-apiRouter.post('/enrollments', (req: Request, res: Response) => {
+apiRouter.post('/enrollments', requireRoles(...ROLES.INSCRIPTION), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const { studentId, programId, academicYearId, paymentPlan, discountType, discountAmount, discountReason } = req.body;
@@ -133,6 +184,23 @@ apiRouter.post('/enrollments', (req: Request, res: Response) => {
 
   if (academicYear.isClosed && actor.role !== 'admin') {
     return res.status(403).json({ error: 'Impossible d inscrire sur une année académique clôturée' });
+  }
+
+  if (student.status === 'rejete' || student.status === 'suspendu') {
+    return res.status(400).json({ error: `Inscription impossible : dossier au statut « ${student.status} »` });
+  }
+
+  const alreadyEnrolled = store.enrollments.find(
+    (e) => e.studentId === studentId && e.academicYearId === academicYearId
+  );
+  if (alreadyEnrolled) {
+    return res.status(409).json({
+      error: 'Cet étudiant est déjà inscrit pour cette année académique (doublon d inscription et de facturation évité)',
+    });
+  }
+
+  if (discountAmount !== undefined && (Number(discountAmount) < 0 || !Number.isFinite(Number(discountAmount)))) {
+    return res.status(400).json({ error: 'Montant de remise invalide' });
   }
 
   // Lock applied tariffs (Section 3.D)
@@ -168,10 +236,12 @@ apiRouter.post('/enrollments', (req: Request, res: Response) => {
 
   // Generate Invoices Schedule according to payment plan (Section 3.D)
   const invYear = academicYear.code.split('-')[0];
+  const invPrefix = `${store.config.documentNumbering.invoicePrefix}-${invYear}-`;
+  const invSeqBase = nextSequence(store.invoices.map((i) => i.invoiceNumber), invPrefix);
   const invoicesToCreate: InvoiceSchedule[] = [];
 
   // 1. Frais d'inscription (échéance immédiate)
-  const regInvNum = `${store.config.documentNumbering.invoicePrefix}-${invYear}-${String(store.invoices.length + 1).padStart(5, '0')}`;
+  const regInvNum = `${store.config.documentNumbering.invoicePrefix}-${invYear}-${String(invSeqBase).padStart(5, '0')}`;
   invoicesToCreate.push({
     id: `inv_${Date.now()}_reg`,
     enrollmentId,
@@ -194,7 +264,7 @@ apiRouter.post('/enrollments', (req: Request, res: Response) => {
 
   if (paymentPlan === 'comptant') {
     // Une seule facture globale
-    const invNum = `${store.config.documentNumbering.invoicePrefix}-${invYear}-${String(store.invoices.length + 2).padStart(5, '0')}`;
+    const invNum = `${store.config.documentNumbering.invoicePrefix}-${invYear}-${String(invSeqBase + 1).padStart(5, '0')}`;
     invoicesToCreate.push({
       id: `inv_${Date.now()}_comptant`,
       enrollmentId,
@@ -223,7 +293,7 @@ apiRouter.post('/enrollments', (req: Request, res: Response) => {
       const d = i === 2 ? safeDiscount - quarterlyDiscount * 2 : quarterlyDiscount;
       const n = g - d;
       const yr = i === 0 ? invYear : String(Number(invYear) + 1);
-      const invNum = `${store.config.documentNumbering.invoicePrefix}-${invYear}-${String(store.invoices.length + 2 + i).padStart(5, '0')}`;
+      const invNum = `${store.config.documentNumbering.invoicePrefix}-${invYear}-${String(invSeqBase + 1 + i).padStart(5, '0')}`;
 
       invoicesToCreate.push({
         id: `inv_${Date.now()}_t${i + 1}`,
@@ -253,7 +323,7 @@ apiRouter.post('/enrollments', (req: Request, res: Response) => {
       id: `inv_${Date.now()}_tr1`,
       enrollmentId,
       studentId,
-      invoiceNumber: `${store.config.documentNumbering.invoicePrefix}-${invYear}-${String(store.invoices.length + 2).padStart(5, '0')}`,
+      invoiceNumber: `${store.config.documentNumbering.invoicePrefix}-${invYear}-${String(invSeqBase + 1).padStart(5, '0')}`,
       title: 'Scolarité Tranche 1 (50% à la rentrée)',
       dueDate: `${invYear}-10-15`,
       grossAmount: tranche1Gross,
@@ -270,7 +340,7 @@ apiRouter.post('/enrollments', (req: Request, res: Response) => {
       id: `inv_${Date.now()}_tr2`,
       enrollmentId,
       studentId,
-      invoiceNumber: `${store.config.documentNumbering.invoicePrefix}-${invYear}-${String(store.invoices.length + 3).padStart(5, '0')}`,
+      invoiceNumber: `${store.config.documentNumbering.invoicePrefix}-${invYear}-${String(invSeqBase + 2).padStart(5, '0')}`,
       title: 'Scolarité Tranche 2 (Solde mi-parcours)',
       dueDate: `${Number(invYear) + 1}-02-15`,
       grossAmount: tranche2Gross,
@@ -310,7 +380,7 @@ apiRouter.post('/enrollments', (req: Request, res: Response) => {
       const n = g - d;
       const item = scheduleMonths[i];
       const yearStr = String(Number(invYear) + item.yOffset);
-      const invNum = `${store.config.documentNumbering.invoicePrefix}-${invYear}-${String(store.invoices.length + 2 + i).padStart(5, '0')}`;
+      const invNum = `${store.config.documentNumbering.invoicePrefix}-${invYear}-${String(invSeqBase + 1 + i).padStart(5, '0')}`;
 
       invoicesToCreate.push({
         id: `inv_${Date.now()}_m${i + 1}`,
@@ -352,26 +422,43 @@ apiRouter.post('/enrollments', (req: Request, res: Response) => {
   });
 });
 
-// 5. PAYMENTS & RECEIPTS (With anti-doublon idempotency & partial payment support)
-apiRouter.post('/payments', (req: Request, res: Response) => {
+// 5. PAYMENTS & RECEIPTS (Idempotence anti-doublon, paiement partiel, ventilation FIFO)
+const PAYMENT_METHODS: PaymentMethod[] = ['especes', 'wave', 'orange_money', 'virement', 'cheque'];
+
+function recomputeCashSession(store: AppStore) {
+  store.cashSession.theoreticalBalance =
+    store.cashSession.initialCash + store.cashSession.totalCashIn - store.cashSession.totalCashOut;
+  store.cashSession.actualCountedBalance = store.cashSession.theoreticalBalance;
+}
+
+function applyInvoiceStatus(inv: InvoiceSchedule) {
+  inv.balanceDue = calculateBalanceDue(inv.netAmount, inv.paidAmount);
+  if (inv.balanceDue === 0) inv.status = 'solde';
+  else if (inv.dueDate < todayISO()) inv.status = 'en_retard';
+  else inv.status = inv.paidAmount > 0 ? 'partiel' : 'en_attente';
+}
+
+apiRouter.post('/payments', requireRoles(...ROLES.ENCAISSEMENT), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
-  const {
-    studentId,
-    invoiceScheduleId,
-    amount,
-    paymentMethod,
-    idempotencyKey,
-    transactionRef,
-    notes,
-  } = req.body;
+  const { studentId, invoiceScheduleId, amount, paymentMethod, idempotencyKey, transactionRef, notes } = req.body;
 
-  const numAmount = Math.round(Number(amount));
-  if (!numAmount || numAmount <= 0) {
-    return res.status(400).json({ error: 'Montant invalide' });
+  const numAmount = parsePositiveFcfa(amount);
+  if (!numAmount) {
+    return res.status(400).json({ error: 'Montant invalide : un entier FCFA strictement positif est requis' });
   }
 
-  // Idempotency check (Section 4: un double clic ou webhook répété ne doit pas créer deux encaissements)
+  const method: PaymentMethod = paymentMethod || 'especes';
+  if (!PAYMENT_METHODS.includes(method)) {
+    return res.status(400).json({ error: 'Mode de paiement inconnu' });
+  }
+
+  const student = store.students.find((s) => s.id === studentId);
+  if (!student) {
+    return res.status(404).json({ error: 'Étudiant introuvable' });
+  }
+
+  // Idempotence (un double clic ou un webhook répété ne crée jamais deux encaissements)
   const safeIdempKey = idempotencyKey || `auto_idemp_${studentId}_${numAmount}_${Date.now()}`;
   const existingReceipt = store.receipts.find((r) => r.idempotencyKey === safeIdempKey);
   if (existingReceipt) {
@@ -381,39 +468,77 @@ apiRouter.post('/payments', (req: Request, res: Response) => {
     });
   }
 
-  // Find invoice or student pending invoices
-  let targetInvoice: InvoiceSchedule | undefined;
+  // Une référence de transaction Mobile Money / banque ne peut être utilisée qu'une fois
+  if (transactionRef && method !== 'especes') {
+    const dupRef = store.receipts.find(
+      (r) => r.status === 'valide' && r.transactionRef && r.transactionRef === transactionRef
+    );
+    if (dupRef) {
+      return res.status(409).json({
+        error: `La référence de transaction ${transactionRef} a déjà été encaissée (reçu ${dupRef.receiptNumber})`,
+      });
+    }
+  }
+
+  // Un encaissement en espèces exige une caisse ouverte (sinon l'argent n'est tracé nulle part)
+  if (method === 'especes' && (!store.cashSession || store.cashSession.status !== 'ouverte')) {
+    return res.status(400).json({
+      error: 'Aucune session de caisse ouverte : ouvrez la caisse avant tout encaissement en espèces',
+    });
+  }
+
+  // Détermination des échéances à solder
+  let targets: InvoiceSchedule[];
   if (invoiceScheduleId) {
-    targetInvoice = store.invoices.find((i) => i.id === invoiceScheduleId);
+    const inv = store.invoices.find((i) => i.id === invoiceScheduleId);
+    if (!inv) return res.status(404).json({ error: 'Facture introuvable' });
+    if (inv.studentId !== studentId) {
+      return res.status(400).json({ error: 'Cette facture n appartient pas à l étudiant sélectionné' });
+    }
+    if (inv.balanceDue <= 0) {
+      return res.status(400).json({ error: `La facture ${inv.invoiceNumber} est déjà soldée` });
+    }
+    if (numAmount > inv.balanceDue) {
+      return res.status(400).json({
+        error: `Trop-perçu refusé : le reste dû de la facture ${inv.invoiceNumber} est de ${inv.balanceDue} FCFA`,
+        maxAmount: inv.balanceDue,
+      });
+    }
+    targets = [inv];
   } else {
-    // FIFO allocation: find oldest pending invoice for student
-    targetInvoice = store.invoices
+    // Ventilation FIFO : les échéances les plus anciennes sont soldées en premier
+    targets = store.invoices
       .filter((i) => i.studentId === studentId && i.balanceDue > 0)
-      .sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
+      .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+    const totalDue = targets.reduce((sum, i) => sum + i.balanceDue, 0);
+    if (targets.length === 0) {
+      return res.status(400).json({ error: 'Aucune facture à solder trouvée pour cet étudiant' });
+    }
+    if (numAmount > totalDue) {
+      return res.status(400).json({
+        error: `Trop-perçu refusé : le reste dû total de l étudiant est de ${totalDue} FCFA`,
+        maxAmount: totalDue,
+      });
+    }
   }
 
-  if (!targetInvoice) {
-    return res.status(400).json({ error: 'Aucune facture à solder trouvée pour cet étudiant' });
+  const allocations: NonNullable<PaymentReceipt['allocations']> = [];
+  let remaining = numAmount;
+  for (const inv of targets) {
+    if (remaining <= 0) break;
+    const share = Math.min(remaining, inv.balanceDue);
+    inv.paidAmount += share;
+    applyInvoiceStatus(inv);
+    allocations.push({ invoiceId: inv.id, invoiceNumber: inv.invoiceNumber, amount: share });
+    remaining -= share;
   }
 
-  const enrollment = store.enrollments.find((e) => e.id === targetInvoice!.enrollmentId);
+  const primaryInvoice = store.invoices.find((i) => i.id === allocations[0].invoiceId)!;
+  const enrollment = store.enrollments.find((e) => e.id === primaryInvoice.enrollmentId);
 
-  // Apply payment to invoice
-  const currentPaid = targetInvoice.paidAmount;
-  const newPaid = currentPaid + numAmount;
-  targetInvoice.paidAmount = newPaid;
-  targetInvoice.balanceDue = calculateBalanceDue(targetInvoice.netAmount, newPaid);
-
-  if (targetInvoice.balanceDue === 0) {
-    targetInvoice.status = 'solde';
-  } else if (newPaid > 0) {
-    targetInvoice.status = 'partiel'; // Ne pas marquer la facture soldée si reste dû > 0 !
-  }
-
-  // Generate Receipt
   const currentYear = store.academicYears.find((y) => y.isCurrent)?.code.split('-')[0] || '2025';
-  const receiptCount = store.receipts.length + 1;
-  const receiptNumber = `${store.config.documentNumbering.receiptPrefix}-${currentYear}-${String(receiptCount).padStart(5, '0')}`;
+  const recPrefix = `${store.config.documentNumbering.receiptPrefix}-${currentYear}-`;
+  const receiptNumber = formatSequence(recPrefix, nextSequence(store.receipts.map((r) => r.receiptNumber), recPrefix), 5);
 
   const newReceipt: PaymentReceipt = {
     id: `rec_${Date.now()}`,
@@ -421,10 +546,11 @@ apiRouter.post('/payments', (req: Request, res: Response) => {
     idempotencyKey: safeIdempKey,
     studentId,
     enrollmentId: enrollment?.id || '',
-    invoiceScheduleId: targetInvoice.id,
+    invoiceScheduleId: primaryInvoice.id,
+    allocations,
     amount: numAmount,
-    paymentMethod: (paymentMethod as PaymentMethod) || 'especes',
-    paymentDate: new Date().toISOString().replace('T', ' ').substring(0, 19),
+    paymentMethod: method,
+    paymentDate: nowTimestamp(),
     recordedBy: `${actor.name} (${actor.role})`,
     transactionRef: transactionRef || undefined,
     status: 'valide',
@@ -434,20 +560,18 @@ apiRouter.post('/payments', (req: Request, res: Response) => {
 
   store.receipts.unshift(newReceipt);
 
-  // If cash payment, update open cash register session
-  if (paymentMethod === 'especes' && store.cashSession && store.cashSession.status === 'ouverte') {
+  if (method === 'especes') {
     store.cashSession.totalCashIn += numAmount;
-    store.cashSession.theoreticalBalance =
-      store.cashSession.initialCash + store.cashSession.totalCashIn - store.cashSession.totalCashOut;
-    store.cashSession.actualCountedBalance = store.cashSession.theoreticalBalance;
+    recomputeCashSession(store);
   }
 
+  const allocationText = allocations.map((a) => `${a.invoiceNumber}: ${a.amount} FCFA`).join(', ');
   logAudit(
     actor,
-    targetInvoice.status === 'partiel' ? 'ENCAISSEMENT_PARTIEL' : 'ENCAISSEMENT',
+    primaryInvoice.status === 'solde' && allocations.length === 1 ? 'ENCAISSEMENT' : 'ENCAISSEMENT_PARTIEL',
     'paiement',
     newReceipt.receiptNumber,
-    `Encaissement de ${numAmount} FCFA par ${paymentMethod} pour la facture ${targetInvoice.invoiceNumber}. Nouveau solde dû: ${targetInvoice.balanceDue} FCFA.`
+    `Encaissement de ${numAmount} FCFA par ${method}. Ventilation : ${allocationText}.`
   );
 
   persistStore();
@@ -456,20 +580,17 @@ apiRouter.post('/payments', (req: Request, res: Response) => {
     success: true,
     data: {
       receipt: newReceipt,
-      updatedInvoice: targetInvoice,
+      updatedInvoice: primaryInvoice,
+      updatedInvoices: allocations.map((a) => store.invoices.find((i) => i.id === a.invoiceId)),
     },
   });
 });
 
 // 6. PAYMENT CANCELLATION & REGULARIZATION (Section 3.E: Ne jamais effacer l'opération originale)
-apiRouter.post('/payments/:id/cancel', (req: Request, res: Response) => {
+apiRouter.post('/payments/:id/cancel', requireRoles(...ROLES.COMPTABILITE), (req: Request, res: Response) => {
   const actor = getActor(req);
-  if (actor.role !== 'admin' && actor.role !== 'dg' && actor.role !== 'comptable') {
-    return res.status(403).json({ error: 'Autorisation insuffisante pour annuler un encaissement' });
-  }
-
   const { reason } = req.body;
-  if (!reason || reason.trim().length < 5) {
+  if (!isNonEmptyString(reason, 5)) {
     return res.status(400).json({ error: 'Le motif d annulation est obligatoire et doit être explicite' });
   }
 
@@ -478,31 +599,42 @@ apiRouter.post('/payments/:id/cancel', (req: Request, res: Response) => {
   if (!receipt) return res.status(404).json({ error: 'Reçu non trouvé' });
   if (receipt.status === 'annule') return res.status(400).json({ error: 'Ce reçu est déjà annulé' });
 
-  // Mark as cancelled and link regularization
-  receipt.status = 'annule';
-  receipt.cancellationDetails = {
-    cancelledAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-    cancelledBy: actor.name,
-    reason,
-    regularizationOperationId: `reg_op_${Date.now()}`,
-  };
-
-  // Re-adjust invoice
-  if (receipt.invoiceScheduleId) {
-    const inv = store.invoices.find((i) => i.id === receipt.invoiceScheduleId);
-    if (inv) {
-      inv.paidAmount = Math.max(0, inv.paidAmount - receipt.amount);
-      inv.balanceDue = calculateBalanceDue(inv.netAmount, inv.paidAmount);
-      inv.status = inv.paidAmount === 0 ? 'en_attente' : 'partiel';
+  // Une annulation en espèces sort de l'argent de la caisse : elle doit être ouverte et approvisionnée
+  if (receipt.paymentMethod === 'especes') {
+    if (!store.cashSession || store.cashSession.status !== 'ouverte') {
+      return res.status(400).json({ error: 'Ouvrez la caisse pour annuler un encaissement en espèces (remboursement)' });
+    }
+    if (store.cashSession.theoreticalBalance < receipt.amount) {
+      return res.status(400).json({ error: 'Solde de caisse insuffisant pour rembourser cet encaissement en espèces' });
     }
   }
 
-  // Adjust cash if it was cash
-  if (receipt.paymentMethod === 'especes' && store.cashSession?.status === 'ouverte') {
-    store.cashSession.totalCashIn = Math.max(0, store.cashSession.totalCashIn - receipt.amount);
-    store.cashSession.theoreticalBalance =
-      store.cashSession.initialCash + store.cashSession.totalCashIn - store.cashSession.totalCashOut;
-    store.cashSession.actualCountedBalance = store.cashSession.theoreticalBalance;
+  receipt.status = 'annule';
+  receipt.cancellationDetails = {
+    cancelledAt: nowTimestamp(),
+    cancelledBy: actor.name,
+    reason: reason.trim(),
+    regularizationOperationId: `reg_op_${Date.now()}`,
+  };
+
+  // Rétablissement du reste dû sur chaque échéance ventilée
+  const allocations =
+    receipt.allocations && receipt.allocations.length > 0
+      ? receipt.allocations
+      : receipt.invoiceScheduleId
+        ? [{ invoiceId: receipt.invoiceScheduleId, invoiceNumber: '', amount: receipt.amount }]
+        : [];
+  for (const alloc of allocations) {
+    const inv = store.invoices.find((i) => i.id === alloc.invoiceId);
+    if (inv) {
+      inv.paidAmount = Math.max(0, inv.paidAmount - alloc.amount);
+      applyInvoiceStatus(inv);
+    }
+  }
+
+  if (receipt.paymentMethod === 'especes') {
+    store.cashSession.totalCashOut += receipt.amount;
+    recomputeCashSession(store);
   }
 
   logAudit(
@@ -519,14 +651,28 @@ apiRouter.post('/payments/:id/cancel', (req: Request, res: Response) => {
 });
 
 // 7. CASH REGISTER MANAGEMENT (Section 3.E)
-apiRouter.post('/cash/open', (req: Request, res: Response) => {
+apiRouter.post('/cash/open', requireRoles(...ROLES.CAISSE), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const { initialCash, notes } = req.body;
 
+  if (store.cashSession && store.cashSession.status === 'ouverte') {
+    return res.status(409).json({
+      error: `La session ${store.cashSession.sessionNumber} est encore ouverte : clôturez-la avant d en ouvrir une nouvelle`,
+    });
+  }
+  const fund = Math.round(Number(initialCash) || 0);
+  if (fund < 0) {
+    return res.status(400).json({ error: 'Le fond de caisse ne peut pas être négatif' });
+  }
+
   const currentYear = store.academicYears.find((y) => y.isCurrent)?.code.split('-')[0] || '2025';
-  const sessionCount = store.cashSessionsHistory.length + 1;
-  const sessionNumber = `CSH-${currentYear}-${String(sessionCount).padStart(4, '0')}`;
+  const cshPrefix = `CSH-${currentYear}-`;
+  const sessionNumber = formatSequence(
+    cshPrefix,
+    nextSequence([...store.cashSessionsHistory.map((c) => c.sessionNumber), store.cashSession?.sessionNumber], cshPrefix),
+    4
+  );
 
   const newSession: CashRegisterSession = {
     id: `csh_${Date.now()}`,
@@ -550,7 +696,7 @@ apiRouter.post('/cash/open', (req: Request, res: Response) => {
   res.status(201).json({ success: true, data: newSession });
 });
 
-apiRouter.post('/cash/close', (req: Request, res: Response) => {
+apiRouter.post('/cash/close', requireRoles(...ROLES.CAISSE), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const { actualCountedBalance, notes } = req.body;
@@ -559,8 +705,16 @@ apiRouter.post('/cash/close', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Aucune session de caisse ouverte' });
   }
 
-  const counted = Math.round(Number(actualCountedBalance) || 0);
+  const counted = Math.round(Number(actualCountedBalance));
+  if (!Number.isFinite(counted) || counted < 0) {
+    return res.status(400).json({ error: 'Le solde physique compté est obligatoire et doit être positif' });
+  }
   const diff = counted - store.cashSession.theoreticalBalance;
+  if (diff !== 0 && !isNonEmptyString(notes, 5)) {
+    return res.status(400).json({
+      error: `Écart de caisse de ${diff} FCFA : une justification écrite est obligatoire pour clôturer`,
+    });
+  }
 
   store.cashSession.status = 'fermee';
   store.cashSession.closedAt = new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -581,7 +735,7 @@ apiRouter.post('/cash/close', (req: Request, res: Response) => {
   res.json({ success: true, data: store.cashSession });
 });
 
-apiRouter.post('/cash/movement', (req: Request, res: Response) => {
+apiRouter.post('/cash/movement', requireRoles(...ROLES.CAISSE), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const { type, amount, motive } = req.body;
@@ -590,7 +744,21 @@ apiRouter.post('/cash/movement', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Aucune session de caisse ouverte' });
   }
 
-  const num = Math.round(Number(amount) || 0);
+  if (type !== 'in' && type !== 'out') {
+    return res.status(400).json({ error: 'Type de mouvement invalide (in / out)' });
+  }
+  const num = parsePositiveFcfa(amount);
+  if (!num) {
+    return res.status(400).json({ error: 'Montant de mouvement invalide' });
+  }
+  if (!isNonEmptyString(motive, 3)) {
+    return res.status(400).json({ error: 'Le motif du mouvement de caisse est obligatoire' });
+  }
+  if (type === 'out' && num > store.cashSession.theoreticalBalance) {
+    return res.status(400).json({
+      error: `Retrait impossible : solde théorique de caisse insuffisant (${store.cashSession.theoreticalBalance} FCFA)`,
+    });
+  }
   if (type === 'in') {
     store.cashSession.totalCashIn += num;
   } else {
@@ -612,11 +780,12 @@ apiRouter.post('/cash/movement', (req: Request, res: Response) => {
   res.json({ success: true, data: store.cashSession });
 });
 
-apiRouter.post('/academic-years/:id/close', (req: Request, res: Response) => {
+apiRouter.post('/academic-years/:id/close', requireRoles(...ROLES.DIRECTION), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const yr = store.academicYears.find((y) => y.id === req.params.id);
   if (!yr) return res.status(404).json({ error: 'Année académique non trouvée' });
+  if (yr.isClosed) return res.status(400).json({ error: 'Cette année académique est déjà clôturée' });
 
   yr.isClosed = true;
   logAudit(
@@ -632,15 +801,31 @@ apiRouter.post('/academic-years/:id/close', (req: Request, res: Response) => {
 });
 
 // 8. VENDOR EXPENSES (4 stages to prevent double counting - Section 3.F)
-apiRouter.post('/expenses', (req: Request, res: Response) => {
+const EXPENSE_STAGES: ExpenseStage[] = ['prevue', 'dette_constatee', 'paiement_ordonne', 'decaissement_realise'];
+
+apiRouter.post('/expenses', requireRoles(...ROLES.COMPTABILITE), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const { vendorName, category, description, amount, dueDate, stage, paymentMethod } = req.body;
 
+  const numAmount = parsePositiveFcfa(amount);
+  if (!numAmount) return res.status(400).json({ error: 'Montant de dépense invalide' });
+  if (!isNonEmptyString(vendorName, 2)) return res.status(400).json({ error: 'Le nom du fournisseur est obligatoire' });
+  if (!isNonEmptyString(description, 3)) return res.status(400).json({ error: 'La description de la dépense est obligatoire' });
+  if (stage && !EXPENSE_STAGES.includes(stage)) return res.status(400).json({ error: 'Étape de dépense invalide' });
+
+  if (stage === 'decaissement_realise' && paymentMethod === 'especes') {
+    if (!store.cashSession || store.cashSession.status !== 'ouverte') {
+      return res.status(400).json({ error: 'Ouvrez la caisse avant un décaissement en espèces' });
+    }
+    if (store.cashSession.theoreticalBalance < numAmount) {
+      return res.status(400).json({ error: 'Solde de caisse insuffisant pour ce décaissement en espèces' });
+    }
+  }
+
   const currentYear = store.academicYears.find((y) => y.isCurrent)?.code.split('-')[0] || '2025';
-  const count = store.expenses.length + 1;
-  const expenseNumber = `${store.config.documentNumbering.expensePrefix}-${currentYear}-${String(count).padStart(5, '0')}`;
-  const numAmount = Math.round(Number(amount));
+  const expPrefix = `${store.config.documentNumbering.expensePrefix}-${currentYear}-`;
+  const expenseNumber = formatSequence(expPrefix, nextSequence(store.expenses.map((e) => e.expenseNumber), expPrefix), 5);
 
   const newExpense: VendorExpense = {
     id: `exp_${Date.now()}`,
@@ -681,7 +866,7 @@ apiRouter.post('/expenses', (req: Request, res: Response) => {
   res.status(201).json({ success: true, data: newExpense });
 });
 
-apiRouter.put('/expenses/:id/stage', (req: Request, res: Response) => {
+apiRouter.put('/expenses/:id/stage', requireRoles(...ROLES.COMPTABILITE), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const expense = store.expenses.find((e) => e.id === req.params.id);
@@ -689,6 +874,28 @@ apiRouter.put('/expenses/:id/stage', (req: Request, res: Response) => {
 
   const { newStage, paymentMethod } = req.body;
   const oldStage = expense.stage;
+
+  // Le cycle de vie d'une dépense est strictement progressif (pas de retour arrière)
+  const oldIdx = EXPENSE_STAGES.indexOf(oldStage);
+  const newIdx = EXPENSE_STAGES.indexOf(newStage);
+  if (newIdx === -1) return res.status(400).json({ error: 'Étape de dépense invalide' });
+  if (newIdx <= oldIdx) {
+    return res.status(400).json({ error: `Transition interdite : ${oldStage} → ${newStage} (retour arrière impossible)` });
+  }
+  // Séparation des tâches : seul l'ordonnateur (DG / admin) ordonne le paiement
+  if (newStage === 'paiement_ordonne' && actor.role === 'comptable') {
+    return res.status(403).json({ error: 'L ordonnancement du paiement est réservé à la direction (DG / admin)' });
+  }
+  const effectiveMethod: PaymentMethod = paymentMethod || expense.paymentMethod || 'virement';
+  if (newStage === 'decaissement_realise' && effectiveMethod === 'especes') {
+    if (!store.cashSession || store.cashSession.status !== 'ouverte') {
+      return res.status(400).json({ error: 'Ouvrez la caisse avant un décaissement en espèces' });
+    }
+    if (store.cashSession.theoreticalBalance < expense.amount - expense.paidAmount) {
+      return res.status(400).json({ error: 'Solde de caisse insuffisant pour ce décaissement en espèces' });
+    }
+  }
+
   expense.stage = newStage;
 
   if (newStage === 'paiement_ordonne' && !expense.approvedBy) {
@@ -721,7 +928,7 @@ apiRouter.put('/expenses/:id/stage', (req: Request, res: Response) => {
 });
 
 // 9. TREASURY PROJECTIONS & METRICS (Section 3.G)
-apiRouter.get('/treasury/projection', (_req: Request, res: Response) => {
+apiRouter.get('/treasury/projection', requireRoles(...ROLES.COMPTABILITE), (_req: Request, res: Response) => {
   const store = getStore();
 
   // 1. Solde disponible actuel = Solde caisse ouverte + Trésorerie bancaire active
@@ -810,46 +1017,97 @@ apiRouter.get('/treasury/projection', (_req: Request, res: Response) => {
 });
 
 // 10. PEDAGOGY: GRADES (Validation & Publication cycle - Section 3.C)
-apiRouter.post('/grades', (req: Request, res: Response) => {
-  const actor = getActor(req);
-  const store = getStore();
-  const { studentId, moduleId, academicYearId, continuousAssessmentNote, examNote, status } = req.body;
+// Règle LMD : 40 % contrôle continu + 60 % examen ; la note de rattrapage remplace l'examen si elle est meilleure.
+function computeFinalNote(cc: number, exam: number, catchUp?: number): number {
+  const effectiveExam = catchUp !== undefined && catchUp > exam ? catchUp : exam;
+  return Math.round((cc * 0.4 + effectiveExam * 0.6) * 100) / 100;
+}
 
-  const cc = Number(continuousAssessmentNote) || 0;
-  const exam = Number(examNote) || 0;
-  // Weighted note in LMD: 40% Continuous assessment + 60% Exam
-  const finalNote = Math.round((cc * 0.4 + exam * 0.6) * 10) / 10;
+type GradeInput = {
+  studentId?: string;
+  moduleId?: string;
+  academicYearId?: string;
+  continuousAssessmentNote?: unknown;
+  examNote?: unknown;
+  catchUpExamNote?: unknown;
+  status?: GradeItem['status'];
+};
+
+/** Applique une saisie de note. Retourne un message d'erreur ou la note mise à jour. */
+function upsertGrade(store: AppStore, actor: ReturnType<typeof getActor>, input: GradeInput): GradeItem | string {
+  const { studentId, moduleId } = input;
+  if (!studentId || !moduleId) return 'Étudiant et module obligatoires';
+  if (!store.students.some((s) => s.id === studentId)) return `Étudiant ${studentId} introuvable`;
+  if (!store.modules.some((m) => m.id === moduleId)) return `Module ${moduleId} introuvable`;
+
+  const cc = parseGrade(input.continuousAssessmentNote);
+  const exam = parseGrade(input.examNote);
+  const catchUp = parseGrade(input.catchUpExamNote);
+  if (cc === null || exam === null || catchUp === null) return 'Les notes doivent être comprises entre 0 et 20';
+
+  const academicYearId =
+    input.academicYearId || store.academicYears.find((y) => y.isCurrent)?.id || store.config.activeAcademicYearId;
+  const year = store.academicYears.find((y) => y.id === academicYearId);
+  if (year?.isClosed && actor.role !== 'admin') return `L année ${year.code} est clôturée : notes verrouillées`;
+
+  // Seule la direction pédagogique peut valider ou publier
+  const canValidate = ['admin', 'dg', 'pedagogie'].includes(actor.role);
+  let status = input.status;
+  if (status && status !== 'brouillon' && !canValidate) status = 'brouillon';
 
   let existing = store.grades.find(
     (g) => g.studentId === studentId && g.moduleId === moduleId && g.academicYearId === academicYearId
   );
 
+  if (existing && existing.status !== 'brouillon' && !canValidate) {
+    return `La note de ${studentId} est déjà ${existing.status === 'publie' ? 'publiée' : 'validée'} : modification réservée à la direction pédagogique`;
+  }
+
+  const ccVal = cc ?? existing?.continuousAssessmentNote ?? 0;
+  const examVal = exam ?? existing?.examNote ?? 0;
+  const catchUpVal = catchUp ?? existing?.catchUpExamNote;
+  const finalNote = computeFinalNote(ccVal, examVal, catchUpVal);
+
   if (existing) {
-    existing.continuousAssessmentNote = cc;
-    existing.examNote = exam;
+    existing.continuousAssessmentNote = ccVal;
+    existing.examNote = examVal;
+    if (catchUpVal !== undefined) existing.catchUpExamNote = catchUpVal;
     existing.finalNote = finalNote;
-    existing.status = status || existing.status;
+    if (status) existing.status = status;
   } else {
     existing = {
-      id: `grd_${Date.now()}`,
+      id: `grd_${Date.now()}_${secureToken(4).toLowerCase()}`,
       studentId,
       moduleId,
       academicYearId,
-      continuousAssessmentNote: cc,
-      examNote: exam,
+      continuousAssessmentNote: ccVal,
+      examNote: examVal,
+      catchUpExamNote: catchUpVal,
       finalNote,
       status: status || 'brouillon',
     };
     store.grades.unshift(existing);
   }
+  if (existing.status !== 'brouillon') {
+    existing.validatedBy = actor.name;
+    existing.validatedAt = todayISO();
+  }
+  return existing;
+}
 
-  logAudit(actor, 'SAISIE_NOTE', 'note', existing.id, `Note saisie pour étudiant ${studentId} module ${moduleId} : ${finalNote}/20 (Statut: ${existing.status})`);
+apiRouter.post('/grades', requireRoles(...ROLES.NOTES), (req: Request, res: Response) => {
+  const actor = getActor(req);
+  const store = getStore();
+  const result = upsertGrade(store, actor, req.body || {});
+  if (typeof result === 'string') return res.status(400).json({ error: result });
+
+  logAudit(actor, 'SAISIE_NOTE', 'note', result.id, `Note saisie pour étudiant ${result.studentId} module ${result.moduleId} : ${result.finalNote}/20 (Statut: ${result.status})`);
   persistStore();
-  res.json({ success: true, data: existing });
+  res.json({ success: true, data: result });
 });
 
-// Batch grades update for teachers
-apiRouter.post('/grades/batch', (req: Request, res: Response) => {
+// Batch grades update for teachers (tout ou rien : aucune note n'est enregistrée si une ligne est invalide)
+apiRouter.post('/grades/batch', requireRoles(...ROLES.NOTES), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const { grades: gradeList } = req.body;
@@ -858,44 +1116,15 @@ apiRouter.post('/grades/batch', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Liste de notes invalide ou vide' });
   }
 
+  const snapshot = JSON.stringify(store.grades);
   const updatedItems: GradeItem[] = [];
-
   for (const item of gradeList) {
-    const { studentId, moduleId, academicYearId, continuousAssessmentNote, examNote, catchUpExamNote, status } = item;
-    if (!studentId || !moduleId) continue;
-
-    const cc = continuousAssessmentNote !== undefined ? Number(continuousAssessmentNote) : 0;
-    const exam = examNote !== undefined ? Number(examNote) : 0;
-    const catchUp = catchUpExamNote !== undefined ? Number(catchUpExamNote) : undefined;
-    const effectiveExam = catchUp !== undefined && catchUp > exam ? catchUp : exam;
-    const finalNote = Math.round((cc * 0.4 + effectiveExam * 0.6) * 10) / 10;
-
-    let existing = store.grades.find(
-      (g) => g.studentId === studentId && g.moduleId === moduleId && (!academicYearId || g.academicYearId === academicYearId)
-    );
-
-    if (existing) {
-      existing.continuousAssessmentNote = cc;
-      existing.examNote = exam;
-      if (catchUp !== undefined) existing.catchUpExamNote = catchUp;
-      existing.finalNote = finalNote;
-      if (status) existing.status = status;
-      updatedItems.push(existing);
-    } else {
-      const newGrade: GradeItem = {
-        id: `grd_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-        studentId,
-        moduleId,
-        academicYearId: academicYearId || 'year_2025_2026',
-        continuousAssessmentNote: cc,
-        examNote: exam,
-        catchUpExamNote: catchUp,
-        finalNote,
-        status: status || 'brouillon',
-      };
-      store.grades.unshift(newGrade);
-      updatedItems.push(newGrade);
+    const result = upsertGrade(store, actor, item || {});
+    if (typeof result === 'string') {
+      store.grades = JSON.parse(snapshot); // annulation de la transaction
+      return res.status(400).json({ error: result });
     }
+    updatedItems.push(result);
   }
 
   logAudit(
@@ -921,6 +1150,9 @@ apiRouter.post('/grades/:id/validate', (req: Request, res: Response) => {
   if (!grade) return res.status(404).json({ error: 'Note non trouvée' });
 
   const nextStatus = req.body.status || 'valide';
+  if (!['brouillon', 'valide', 'publie'].includes(nextStatus)) {
+    return res.status(400).json({ error: 'Statut de note invalide' });
+  }
   grade.status = nextStatus;
   grade.validatedBy = actor.name;
   grade.validatedAt = new Date().toISOString().split('T')[0];
@@ -936,7 +1168,7 @@ apiRouter.get('/attendance', (_req: Request, res: Response) => {
   res.json({ success: true, data: store.attendance || [] });
 });
 
-apiRouter.post('/attendance', (req: Request, res: Response) => {
+apiRouter.post('/attendance', requireRoles(...ROLES.PRESENCES), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const {
@@ -1039,7 +1271,7 @@ apiRouter.post('/attendance', (req: Request, res: Response) => {
   res.json({ success: true, data: record });
 });
 
-apiRouter.put('/attendance/:id', (req: Request, res: Response) => {
+apiRouter.put('/attendance/:id', requireRoles(...ROLES.PRESENCES), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const record = store.attendance.find((a) => a.id === req.params.id);
@@ -1064,7 +1296,7 @@ apiRouter.put('/attendance/:id', (req: Request, res: Response) => {
   res.json({ success: true, data: record });
 });
 
-apiRouter.post('/attendance/:id/sign', (req: Request, res: Response) => {
+apiRouter.post('/attendance/:id/sign', requireRoles(...ROLES.PRESENCES), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const record = store.attendance.find((a) => a.id === req.params.id);
@@ -1086,7 +1318,7 @@ apiRouter.post('/attendance/:id/sign', (req: Request, res: Response) => {
   res.json({ success: true, data: record });
 });
 
-apiRouter.delete('/attendance/:id', (req: Request, res: Response) => {
+apiRouter.delete('/attendance/:id', requireRoles(...ROLES.PRESENCES), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const index = store.attendance.findIndex((a) => a.id === req.params.id);
@@ -1122,14 +1354,8 @@ function generateUniqueSerialNumber(store: any, type: string, year: string): str
 
 // Helper to generate security verification token
 function generateSecurityToken(year: string): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let p1 = '';
-  let p2 = '';
-  for (let i = 0; i < 4; i++) {
-    p1 += chars.charAt(Math.floor(Math.random() * chars.length));
-    p2 += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return `SEC-${p1}-${p2}-${year}`;
+  // Jeton cryptographiquement sûr (Math.random est prévisible et permettrait de forger des jetons)
+  return `SEC-${secureToken(4)}-${secureToken(4)}-${year}`;
 }
 
 // List all diplomas & certificates
@@ -1209,7 +1435,7 @@ apiRouter.get('/diplomas/verify/:query', (req: Request, res: Response) => {
 });
 
 // Create / Issue new diploma or certificate
-apiRouter.post('/diplomas', (req: Request, res: Response) => {
+apiRouter.post('/diplomas', requireRoles(...ROLES.DIPLOMES), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   if (!store.diplomas) store.diplomas = [];
@@ -1278,7 +1504,7 @@ apiRouter.post('/diplomas', (req: Request, res: Response) => {
 });
 
 // Update diploma details
-apiRouter.put('/diplomas/:id', (req: Request, res: Response) => {
+apiRouter.put('/diplomas/:id', requireRoles(...ROLES.DIPLOMES), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   if (!store.diplomas) store.diplomas = [];
@@ -1326,7 +1552,7 @@ apiRouter.put('/diplomas/:id', (req: Request, res: Response) => {
 });
 
 // Record official print event
-apiRouter.post('/diplomas/:id/print', (req: Request, res: Response) => {
+apiRouter.post('/diplomas/:id/print', requireRoles(...ROLES.DIPLOMES), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   if (!store.diplomas) store.diplomas = [];
@@ -1365,7 +1591,7 @@ apiRouter.post('/diplomas/:id/print', (req: Request, res: Response) => {
 });
 
 // Revoke diploma
-apiRouter.post('/diplomas/:id/revoke', (req: Request, res: Response) => {
+apiRouter.post('/diplomas/:id/revoke', requireRoles(...ROLES.DIRECTION), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   if (!store.diplomas) store.diplomas = [];
@@ -1396,7 +1622,7 @@ apiRouter.post('/diplomas/:id/revoke', (req: Request, res: Response) => {
 });
 
 // Delete diploma (only for drafts or admin)
-apiRouter.delete('/diplomas/:id', (req: Request, res: Response) => {
+apiRouter.delete('/diplomas/:id', requireRoles(...ROLES.DIRECTION), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   if (!store.diplomas) store.diplomas = [];
@@ -1418,7 +1644,7 @@ apiRouter.delete('/diplomas/:id', (req: Request, res: Response) => {
 });
 
 // Batch generation for a program
-apiRouter.post('/diplomas/batch-generate', (req: Request, res: Response) => {
+apiRouter.post('/diplomas/batch-generate', requireRoles(...ROLES.DIPLOMES), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   if (!store.diplomas) store.diplomas = [];
@@ -1498,7 +1724,7 @@ apiRouter.get('/library/books', (_req: Request, res: Response) => {
   res.json({ success: true, data: store.books || [] });
 });
 
-apiRouter.post('/library/books', (req: Request, res: Response) => {
+apiRouter.post('/library/books', requireRoles(...ROLES.BIBLIOTHEQUE), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const { isbn, title, author, category, publisher, publishYear, location, totalCopies, description } = req.body;
@@ -1531,7 +1757,7 @@ apiRouter.post('/library/books', (req: Request, res: Response) => {
   res.json({ success: true, data: newBook });
 });
 
-apiRouter.put('/library/books/:id', (req: Request, res: Response) => {
+apiRouter.put('/library/books/:id', requireRoles(...ROLES.BIBLIOTHEQUE), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const bookIndex = store.books?.findIndex((b) => b.id === req.params.id);
@@ -1559,7 +1785,7 @@ apiRouter.put('/library/books/:id', (req: Request, res: Response) => {
   res.json({ success: true, data: updated });
 });
 
-apiRouter.delete('/library/books/:id', (req: Request, res: Response) => {
+apiRouter.delete('/library/books/:id', requireRoles(...ROLES.BIBLIOTHEQUE), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const book = store.books?.find((b) => b.id === req.params.id);
@@ -1598,7 +1824,7 @@ apiRouter.get('/library/loans', (_req: Request, res: Response) => {
   res.json({ success: true, data: store.bookLoans || [] });
 });
 
-apiRouter.post('/library/loans', (req: Request, res: Response) => {
+apiRouter.post('/library/loans', requireRoles(...ROLES.BIBLIOTHEQUE), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const { bookId, studentId, loanDate, dueDate, conditionAtLoan, remarks } = req.body;
@@ -1658,7 +1884,7 @@ apiRouter.post('/library/loans', (req: Request, res: Response) => {
   res.json({ success: true, data: newLoan, bookAvailableCopies: book.availableCopies });
 });
 
-apiRouter.put('/library/loans/:id/return', (req: Request, res: Response) => {
+apiRouter.put('/library/loans/:id/return', requireRoles(...ROLES.BIBLIOTHEQUE), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const loan = store.bookLoans?.find((l) => l.id === req.params.id);
@@ -1698,7 +1924,7 @@ apiRouter.put('/library/loans/:id/return', (req: Request, res: Response) => {
   res.json({ success: true, data: loan, bookAvailableCopies: book?.availableCopies });
 });
 
-apiRouter.put('/library/loans/:id/extend', (req: Request, res: Response) => {
+apiRouter.put('/library/loans/:id/extend', requireRoles(...ROLES.BIBLIOTHEQUE), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const loan = store.bookLoans?.find((l) => l.id === req.params.id);
@@ -1736,7 +1962,7 @@ apiRouter.put('/library/loans/:id/extend', (req: Request, res: Response) => {
 });
 
 // 13. PLANIFICATION DES COURS & EXAMENS (Emploi du temps & Sessions)
-apiRouter.post('/timetables', (req: Request, res: Response) => {
+apiRouter.post('/timetables', requireRoles(...ROLES.PLANNING), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const { programId, moduleId, teacherId, room, dayOfWeek, startTime, endTime, sessionType, date, supervisor, notes } = req.body;
@@ -1776,7 +2002,7 @@ apiRouter.post('/timetables', (req: Request, res: Response) => {
   res.json({ success: true, data: newSlot });
 });
 
-apiRouter.put('/timetables/:id', (req: Request, res: Response) => {
+apiRouter.put('/timetables/:id', requireRoles(...ROLES.PLANNING), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const index = store.timetables.findIndex((t) => t.id === req.params.id);
@@ -1802,7 +2028,7 @@ apiRouter.put('/timetables/:id', (req: Request, res: Response) => {
   res.json({ success: true, data: updated });
 });
 
-apiRouter.delete('/timetables/:id', (req: Request, res: Response) => {
+apiRouter.delete('/timetables/:id', requireRoles(...ROLES.PLANNING), (req: Request, res: Response) => {
   const actor = getActor(req);
   const store = getStore();
   const slot = store.timetables.find((t) => t.id === req.params.id);
@@ -1823,6 +2049,122 @@ apiRouter.delete('/timetables/:id', (req: Request, res: Response) => {
   res.json({ success: true, message: 'Créneau supprimé' });
 });
 
+// 15. RECOUVREMENT : RELANCES DES IMPAYÉS
+const REMINDER_CHANNELS: ReminderChannel[] = ['whatsapp', 'sms', 'email', 'appel', 'courrier'];
+const REMINDER_LEVELS: ReminderLevel[] = ['courtoise', 'ferme', 'mise_en_demeure'];
+
+apiRouter.get('/reminders', requireRoles(...ROLES.RELANCE), (_req: Request, res: Response) => {
+  res.json({ success: true, data: getStore().reminders || [] });
+});
+
+apiRouter.post('/reminders', requireRoles(...ROLES.RELANCE), (req: Request, res: Response) => {
+  const actor = getActor(req);
+  const store = getStore();
+  const { studentId, channel, level, recipient, message, promiseDate, notes } = req.body;
+
+  const student = store.students.find((s) => s.id === studentId);
+  if (!student) return res.status(404).json({ error: 'Étudiant introuvable' });
+  if (!REMINDER_CHANNELS.includes(channel)) return res.status(400).json({ error: 'Canal de relance invalide' });
+  if (!REMINDER_LEVELS.includes(level)) return res.status(400).json({ error: 'Niveau de relance invalide' });
+  if (!isNonEmptyString(message, 10)) return res.status(400).json({ error: 'Le message de relance est obligatoire' });
+  if (level === 'mise_en_demeure' && !['admin', 'dg', 'comptable'].includes(actor.role)) {
+    return res.status(403).json({ error: 'La mise en demeure est réservée à la comptabilité et à la direction' });
+  }
+
+  const unpaid = store.invoices.filter((i) => i.studentId === studentId && i.balanceDue > 0);
+  if (unpaid.length === 0) return res.status(400).json({ error: 'Cet étudiant n a aucun impayé : relance inutile' });
+
+  const currentYear = store.academicYears.find((y) => y.isCurrent)?.code.split('-')[0] || '2025';
+  const relPrefix = `REL-${currentYear}-`;
+  const reminder: PaymentReminder = {
+    id: `rem_${Date.now()}_${secureToken(4).toLowerCase()}`,
+    reminderNumber: formatSequence(relPrefix, nextSequence((store.reminders || []).map((r) => r.reminderNumber), relPrefix), 5),
+    studentId,
+    invoiceIds: unpaid.map((i) => i.id),
+    amountDue: unpaid.reduce((sum, i) => sum + i.balanceDue, 0),
+    channel,
+    level,
+    recipient: String(recipient || student.parentPhone || student.phone || ''),
+    message: message.trim(),
+    sentAt: nowTimestamp(),
+    sentBy: actor.name,
+    promiseDate: promiseDate || undefined,
+    notes: notes || undefined,
+  };
+
+  if (!store.reminders) store.reminders = [];
+  store.reminders.unshift(reminder);
+  logAudit(
+    actor,
+    'RELANCE_IMPAYE',
+    'relance',
+    reminder.reminderNumber,
+    `Relance ${level} (${channel}) envoyée à ${student.firstName} ${student.lastName} pour ${reminder.amountDue} FCFA${promiseDate ? `. Promesse de paiement au ${promiseDate}` : ''}`
+  );
+  persistStore();
+  res.status(201).json({ success: true, data: reminder });
+});
+
+// 16. SAUVEGARDE & RESTAURATION DE LA BASE
+const REQUIRED_STORE_KEYS: (keyof AppStore)[] = [
+  'config', 'academicYears', 'programs', 'users', 'students', 'enrollments', 'invoices',
+  'receipts', 'cashSession', 'expenses', 'modules', 'grades', 'timetables', 'auditLogs',
+];
+
+apiRouter.get('/admin/backup', requireRoles(...ROLES.DIRECTION), (req: Request, res: Response) => {
+  const actor = getActor(req);
+  const store = getStore();
+  logAudit(actor, 'EXPORT_SAUVEGARDE', 'systeme', 'backup', 'Téléchargement d une sauvegarde complète de la base');
+  const stamp = new Date().toISOString().replace(/[:T]/g, '-').substring(0, 19);
+  res.setHeader('Content-Disposition', `attachment; filename="dgb-sauvegarde-${stamp}.json"`);
+  res.json({
+    format: 'dgb-app-pro-backup',
+    version: 1,
+    exportedAt: nowTimestamp(),
+    exportedBy: actor.name,
+    data: store,
+  });
+});
+
+apiRouter.post('/admin/restore', requireRoles(...ROLES.ADMIN), (req: Request, res: Response) => {
+  const actor = getActor(req);
+  const payload = req.body;
+  const data = payload?.format === 'dgb-app-pro-backup' ? payload.data : payload;
+
+  if (!data || typeof data !== 'object') {
+    return res.status(400).json({ error: 'Fichier de sauvegarde illisible' });
+  }
+  const missing = REQUIRED_STORE_KEYS.filter((k) => data[k] === undefined);
+  if (missing.length > 0) {
+    return res.status(400).json({ error: `Sauvegarde incomplète : sections manquantes (${missing.join(', ')})` });
+  }
+  const arrays = REQUIRED_STORE_KEYS.filter((k) => k !== 'config' && k !== 'cashSession');
+  const notArrays = arrays.filter((k) => !Array.isArray(data[k]));
+  if (notArrays.length > 0) {
+    return res.status(400).json({ error: `Sauvegarde corrompue : sections invalides (${notArrays.join(', ')})` });
+  }
+
+  const restored: AppStore = {
+    cashSessionsHistory: [],
+    attendance: [],
+    diplomas: [],
+    books: [],
+    bookLoans: [],
+    reminders: [],
+    ...data,
+  };
+  replaceStore(restored);
+  logAudit(
+    actor,
+    'RESTAURATION_SAUVEGARDE',
+    'systeme',
+    'restore',
+    `Restauration d une sauvegarde (${restored.students.length} étudiants, ${restored.invoices.length} factures, ${restored.receipts.length} reçus)`,
+    payload?.exportedAt ? `Sauvegarde du ${payload.exportedAt}` : undefined
+  );
+  res.json({ success: true, data: { students: restored.students.length, invoices: restored.invoices.length } });
+});
+
 // 14. AUTOMATED TESTS & DATA INTEGRITY RUNNER (Section 4)
 apiRouter.get('/tests/run', (_req: Request, res: Response) => {
   const testReport = runFinancialAndIntegrityTests();
@@ -1830,7 +2172,7 @@ apiRouter.get('/tests/run', (_req: Request, res: Response) => {
 });
 
 // 12. RESET TO DEMO DATA
-apiRouter.post('/admin/reset', (req: Request, res: Response) => {
+apiRouter.post('/admin/reset', requireRoles(...ROLES.ADMIN), (req: Request, res: Response) => {
   const actor = getActor(req);
   if (actor.role !== 'admin') {
     return res.status(403).json({ error: 'Accès réservé à l administrateur' });

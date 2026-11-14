@@ -151,6 +151,7 @@ export interface PaymentReceipt {
   studentId: string;
   enrollmentId: string;
   invoiceScheduleId?: string; // specific or distributed
+  allocations?: { invoiceId: string; invoiceNumber: string; amount: number }[]; // Ventilation FIFO multi-échéances
   amount: number; // FCFA integer
   paymentMethod: PaymentMethod;
   paymentDate: string;
@@ -316,7 +317,7 @@ export interface AuditLogEntry {
   userName: string;
   userRole: UserRole;
   action: string;
-  entity: 'etudiant' | 'inscription' | 'facture' | 'paiement' | 'caisse' | 'depense' | 'note' | 'parametre' | 'presence' | 'diplome' | 'livre' | 'emprunt' | 'cours' | 'planning' | 'module';
+  entity: 'etudiant' | 'inscription' | 'facture' | 'paiement' | 'caisse' | 'depense' | 'note' | 'parametre' | 'presence' | 'diplome' | 'livre' | 'emprunt' | 'cours' | 'planning' | 'module' | 'relance' | 'systeme';
   entityId: string;
   details: string;
   reason?: string;
@@ -421,4 +422,24 @@ export interface CashProjectionItem {
   projectedNet: number;
   financingNeed: number;
   isAlert: boolean;
+}
+
+export type ReminderChannel = 'whatsapp' | 'sms' | 'email' | 'appel' | 'courrier';
+export type ReminderLevel = 'courtoise' | 'ferme' | 'mise_en_demeure';
+
+/** Relance de recouvrement envoyée à un étudiant / son tuteur. */
+export interface PaymentReminder {
+  id: string;
+  reminderNumber: string; // Ex: "REL-2025-00012"
+  studentId: string;
+  invoiceIds: string[];
+  amountDue: number; // FCFA integer au moment de la relance
+  channel: ReminderChannel;
+  level: ReminderLevel;
+  recipient: string; // téléphone ou e-mail
+  message: string;
+  sentAt: string;
+  sentBy: string;
+  promiseDate?: string; // Date de paiement promise par la famille
+  notes?: string;
 }

@@ -6,6 +6,7 @@ import {
   ChevronDown,
   PlayCircle,
   RotateCcw,
+  Search,
   ShieldCheck,
   UserCheck,
   Users,
@@ -18,10 +19,11 @@ import { UserRole } from '../types';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { PWAInstallButton } from './PWA/PWAInstallButton';
 import { OfflineStatusModal } from './PWA/OfflineStatusModal';
+import { NotificationsCenter } from './Common/NotificationsCenter';
 
-export const Header: React.FC = () => {
+export const Header: React.FC<{ onOpenSearch?: () => void }> = ({ onOpenSearch }) => {
   const { config, academicYears, setIsPriorityFlowOpen, resetDemoData, setActiveView } = useApp();
-  const { currentUser, activeRole, users, switchUser, setActiveRole } = useAuth();
+  const { activeRole, users, switchUser } = useAuth();
   const { isOnline, isSimulatedOffline } = useOnlineStatus();
   const [isOfflineModalOpen, setIsOfflineModalOpen] = React.useState(false);
 
@@ -50,9 +52,12 @@ export const Header: React.FC = () => {
             <div>
               <div className="flex items-center space-x-2">
                 <span className="font-semibold text-slate-900 text-sm sm:text-base leading-tight">
-                  {config.name}
+                  <span className="hidden lg:block truncate max-w-[16rem] xl:max-w-[24rem] 2xl:max-w-none" title={config.name}>
+                    {config.name}
+                  </span>
+                  <span className="lg:hidden">{config.acronym}</span>
                 </span>
-                <span className="hidden md:inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span className="hidden 2xl:inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
                   Dakar, Sénégal (XOF)
                 </span>
               </div>
@@ -69,14 +74,28 @@ export const Header: React.FC = () => {
 
           {/* Quick Actions & Role Switcher */}
           <div className="flex items-center space-x-2 sm:space-x-3">
+            {/* Recherche globale (Ctrl+K) */}
+            <button
+              onClick={onOpenSearch}
+              className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-500 text-xs transition-colors"
+              title="Recherche globale (Ctrl + K)"
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span className="hidden lg:inline whitespace-nowrap">Rechercher…</span>
+              <kbd className="hidden lg:inline text-[10px] border border-slate-200 bg-white rounded px-1">Ctrl K</kbd>
+            </button>
+
+            {/* Centre d'alertes */}
+            <NotificationsCenter />
+
             {/* Priority Flow Button */}
             <button
               onClick={() => setIsPriorityFlowOpen(true)}
               className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs transition-colors"
               title="Tester le parcours prioritaire en 9 étapes (Cahier des charges section 5)"
             >
-              <PlayCircle className="w-4 h-4 mr-1.5" />
-              <span className="hidden sm:inline">Parcours Prioritaire</span> (9 étapes)
+              <PlayCircle className="w-4 h-4 xl:mr-1.5" />
+              <span className="hidden xl:inline whitespace-nowrap">Parcours Prioritaire (9 étapes)</span>
             </button>
 
             {/* Test Runner Button */}
@@ -86,14 +105,14 @@ export const Header: React.FC = () => {
               title="Vérifier les règles de calcul et intégrité"
             >
               <ShieldCheck className="w-4 h-4 mr-1 text-indigo-600" />
-              <span className="hidden md:inline">Tests Intégrité</span>
+              <span className="hidden xl:inline whitespace-nowrap">Tests Intégrité</span>
             </button>
 
             {/* Role Switcher Menu */}
             <div className="relative group">
               <button className="flex items-center space-x-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs font-medium transition-colors">
                 <Users className="w-3.5 h-3.5 text-slate-500" />
-                <span className="hidden sm:inline text-slate-500">Rôle :</span>
+                <span className="hidden xl:inline text-slate-500 whitespace-nowrap">Rôle :</span>
                 <span
                   className={`px-1.5 py-0.5 rounded text-[11px] font-semibold border ${roleLabels[activeRole]?.badge}`}
                 >
@@ -113,8 +132,7 @@ export const Header: React.FC = () => {
                     <button
                       key={r}
                       onClick={() => {
-                        setActiveRole(r);
-                        if (matchingUser) switchUser(matchingUser.id);
+                        if (matchingUser) switchUser(matchingUser.id, r);
                       }}
                       className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-slate-50 transition-colors ${
                         activeRole === r ? 'bg-slate-100 font-semibold text-slate-900' : 'text-slate-700'
@@ -153,8 +171,8 @@ export const Header: React.FC = () => {
               {isOnline ? (
                 <>
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="hidden md:inline">En ligne</span>
-                  <span className="text-2xs bg-emerald-200/60 text-emerald-900 px-1 rounded-xs">Cache PWA</span>
+                  <span className="hidden xl:inline whitespace-nowrap">En ligne</span>
+                  <span className="hidden lg:inline text-2xs bg-emerald-200/60 text-emerald-900 px-1 rounded-xs whitespace-nowrap">Cache PWA</span>
                 </>
               ) : (
                 <>
@@ -167,7 +185,8 @@ export const Header: React.FC = () => {
               )}
             </button>
 
-            {/* Reset Demo Data Button */}
+            {/* Reset Demo Data Button (administrateur uniquement) */}
+            {activeRole === 'admin' && (
             <button
               onClick={() => {
                 if (window.confirm('Voulez-vous réinitialiser le jeu de données de démonstration ?')) {
@@ -179,6 +198,7 @@ export const Header: React.FC = () => {
             >
               <RotateCcw className="w-4 h-4" />
             </button>
+            )}
           </div>
         </div>
       </div>

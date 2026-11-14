@@ -105,7 +105,12 @@ export default defineConfig(() => {
     },
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // La base JSON (data/) est réécrite par l'API à chaque opération : elle ne doit
+      // pas déclencher de rechargement de la page côté navigateur.
+      watch:
+        process.env.DISABLE_HMR === 'true'
+          ? null
+          : { ignored: ['**/data/**', '**/dist/**'] },
     },
   };
 });

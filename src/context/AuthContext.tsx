@@ -6,7 +6,7 @@ interface AuthContextType {
   currentUser: User;
   activeRole: UserRole;
   users: User[];
-  switchUser: (userId: string) => void;
+  switchUser: (userId: string, role?: UserRole) => void;
   setActiveRole: (role: UserRole) => void;
   hasRole: (role: UserRole | UserRole[]) => boolean;
   canAccessFinances: () => boolean;
@@ -22,16 +22,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]);
   const [activeRole, setActiveRoleState] = useState<UserRole>(INITIAL_USERS[0].activeRole);
 
-  const switchUser = (userId: string) => {
+  const switchUser = (userId: string, role?: UserRole) => {
     const found = users.find((u) => u.id === userId);
     if (found) {
       setCurrentUser(found);
-      setActiveRoleState(found.activeRole || found.roles[0]);
+      // Le rôle demandé n'est retenu que s'il est réellement attribué à l'utilisateur
+      setActiveRoleState(role && found.roles.includes(role) ? role : found.activeRole || found.roles[0]);
     }
   };
 
   const setActiveRole = (role: UserRole) => {
-    setActiveRoleState(role);
+    if (currentUser.roles.includes(role)) {
+      setActiveRoleState(role);
+    }
   };
 
   const hasRole = (role: UserRole | UserRole[]) => {

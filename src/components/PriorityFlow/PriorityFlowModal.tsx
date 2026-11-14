@@ -66,7 +66,8 @@ export const PriorityFlowModal: React.FC = () => {
   const [lastName, setLastName] = useState('Ndiaye');
   const [phone, setPhone] = useState('+221 77 654 32 10');
   const [email, setEmail] = useState('aminata.ndiaye@ismnm-etu.sn');
-  const [cniPassport, setCniPassport] = useState('2 890 2005 01923');
+  // CNI de démonstration aléatoire : le serveur refuse désormais les doublons de pièce d'identité
+  const [cniPassport, setCniPassport] = useState(() => `2 890 2005 ${String(Math.floor(10000 + Math.random() * 89999))}`);
   const [birthPlace, setBirthPlace] = useState('Dakar');
 
   // Form Fields for Step 2 & 3

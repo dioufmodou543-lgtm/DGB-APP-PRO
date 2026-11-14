@@ -41,7 +41,7 @@ export const TestRunnerView: React.FC = () => {
             Suite Automatisée de Tests d Intégrité (Section 4)
           </h1>
           <p className="text-xs text-slate-500">
-            Validation mathématique des 8 règles de gestion financière, d idempotence et de sécurité
+            Validation mathématique des règles de gestion financière, d idempotence et de sécurité
           </p>
         </div>
 
@@ -51,7 +51,7 @@ export const TestRunnerView: React.FC = () => {
           className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-2 shadow-xs transition-colors cursor-pointer"
         >
           <RefreshCw className={`w-4 h-4 ${isRunningTests ? 'animate-spin' : ''}`} />
-          <span>{isRunningTests ? 'Exécution en cours...' : 'Réexécuter les 8 Tests'}</span>
+          <span>{isRunningTests ? 'Exécution en cours...' : 'Réexécuter les tests'}</span>
         </button>
       </div>
 
@@ -116,7 +116,7 @@ export const TestRunnerView: React.FC = () => {
 
             <p className="text-xs text-slate-600 mt-2.5">{t.description}</p>
 
-            <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-100 text-[11px] font-mono text-slate-700">
+            <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-100 text-[11px] font-mono text-slate-700 break-all max-h-32 overflow-y-auto">
               <span className="text-slate-400 block mb-0.5">// Résultat d assertion :</span>
               {t.details}
             </div>

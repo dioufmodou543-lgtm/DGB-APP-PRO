@@ -17,6 +17,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { formatFCFA } from '../../services/currency';
 import { InvoiceSchedule, PaymentMethod } from '../../types';
+import { downloadCSV, todayStamp } from '../../utils/csv';
 
 export const InvoicesView: React.FC = () => {
   const { invoices, students, recordPayment } = useApp();
@@ -41,6 +42,29 @@ export const InvoicesView: React.FC = () => {
     const statusMatch = statusFilter === 'all' || inv.status === statusFilter;
     return textMatch && statusMatch;
   });
+
+  const exportCSV = () => {
+    downloadCSV<InvoiceSchedule>(`factures_echeanciers_${todayStamp()}`, filteredInvoices, [
+      { header: 'N° facture', value: (i) => i.invoiceNumber },
+      { header: 'Matricule', value: (i) => students.find((s) => s.id === i.studentId)?.matricule || '' },
+      {
+        header: 'Étudiant',
+        value: (i) => {
+          const s = students.find((st) => st.id === i.studentId);
+          return s ? `${s.lastName} ${s.firstName}` : i.studentId;
+        },
+      },
+      { header: 'Libellé', value: (i) => i.title },
+      { header: 'Catégorie', value: (i) => i.category },
+      { header: 'Échéance', value: (i) => i.dueDate },
+      { header: 'Brut (FCFA)', value: (i) => i.grossAmount },
+      { header: 'Remise (FCFA)', value: (i) => i.discountShare },
+      { header: 'Net (FCFA)', value: (i) => i.netAmount },
+      { header: 'Payé (FCFA)', value: (i) => i.paidAmount },
+      { header: 'Reste dû (FCFA)', value: (i) => i.balanceDue },
+      { header: 'Statut', value: (i) => i.status },
+    ]);
+  };
 
   const openPaymentModal = (inv: InvoiceSchedule) => {
     setSelectedInvoice(inv);
@@ -81,6 +105,13 @@ export const InvoicesView: React.FC = () => {
             Suivi des factures générées, règlements partiels et restes dus en FCFA
           </p>
         </div>
+        <button
+          onClick={exportCSV}
+          className="px-3 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 text-xs font-medium flex items-center space-x-1.5 bg-white"
+        >
+          <Download className="w-3.5 h-3.5" />
+          <span>Exporter (Excel)</span>
+        </button>
       </div>
 
       {/* Search and Filters */}

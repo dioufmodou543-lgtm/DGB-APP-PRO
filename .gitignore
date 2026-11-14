@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Artefacts locaux
+dev-dist/
+package-lock.json
+data/*.tmp

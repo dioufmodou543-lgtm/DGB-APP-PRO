@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import {
@@ -33,6 +34,7 @@ import {
   GradeItem,
   InvoiceSchedule,
   PaymentReceipt,
+  PaymentReminder,
   Program,
   StudentAdmission,
   TeachingModule,
@@ -60,6 +62,7 @@ export interface AppStore {
   diplomas: DiplomaCertificate[];
   books: Book[];
   bookLoans: BookLoan[];
+  reminders: PaymentReminder[];
   auditLogs: AuditLogEntry[];
 }
 
@@ -86,6 +89,7 @@ function getDefaultStore(): AppStore {
     diplomas: JSON.parse(JSON.stringify(INITIAL_DIPLOMAS)),
     books: JSON.parse(JSON.stringify(INITIAL_BOOKS)),
     bookLoans: JSON.parse(JSON.stringify(INITIAL_BOOK_LOANS)),
+    reminders: [],
     auditLogs: JSON.parse(JSON.stringify(INITIAL_AUDIT_LOGS)),
   };
 }
@@ -115,6 +119,12 @@ try {
     if (!store.bookLoans || !Array.isArray(store.bookLoans)) {
       store.bookLoans = JSON.parse(JSON.stringify(INITIAL_BOOK_LOANS));
     }
+    if (!store.reminders || !Array.isArray(store.reminders)) {
+      store.reminders = [];
+    }
+    if (!store.cashSessionsHistory || !Array.isArray(store.cashSessionsHistory)) {
+      store.cashSessionsHistory = [];
+    }
   } else {
     fs.writeFileSync(DB_FILE, JSON.stringify(store, null, 2), 'utf-8');
   }
@@ -128,13 +138,24 @@ export function persistStore(): void {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    fs.writeFileSync(DB_FILE, JSON.stringify(store, null, 2), 'utf-8');
+    // Écriture atomique : fichier temporaire puis renommage, pour éviter une base
+    // corrompue (JSON tronqué) en cas de coupure de courant pendant l'écriture.
+    const tmpFile = `${DB_FILE}.tmp`;
+    fs.writeFileSync(tmpFile, JSON.stringify(store, null, 2), 'utf-8');
+    fs.renameSync(tmpFile, DB_FILE);
   } catch (err) {
     console.error('Error saving store to disk:', err);
   }
 }
 
 export function getStore(): AppStore {
+  return store;
+}
+
+/** Remplace intégralement le store (restauration d'une sauvegarde validée). */
+export function replaceStore(next: AppStore): AppStore {
+  store = next;
+  persistStore();
   return store;
 }
 
@@ -153,7 +174,7 @@ export function logAudit(
   reason?: string
 ): AuditLogEntry {
   const entry: AuditLogEntry = {
-    id: `aud_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    id: `aud_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
     timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
     userId: actor.id,
     userName: actor.name,

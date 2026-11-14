@@ -33,7 +33,10 @@ import {
   InvoiceSchedule,
   PaymentMethod,
   PaymentReceipt,
+  PaymentReminder,
   Program,
+  ReminderChannel,
+  ReminderLevel,
   StudentAdmission,
   TeachingModule,
   TimetableSlot,
@@ -78,6 +81,22 @@ interface AppContextType {
   isRunningTests: boolean;
   // Actions
   refreshData: () => Promise<void>;
+  clearError: () => void;
+  showError: (message: string) => void;
+  reminders: PaymentReminder[];
+  updateStudent: (id: string, data: Partial<StudentAdmission> & { reason?: string }) => Promise<StudentAdmission>;
+  sendReminder: (data: {
+    studentId: string;
+    channel: ReminderChannel;
+    level: ReminderLevel;
+    recipient?: string;
+    message: string;
+    promiseDate?: string;
+    notes?: string;
+  }) => Promise<PaymentReminder>;
+  downloadBackup: () => Promise<void>;
+  updateConfig: (data: Partial<EstablishmentConfig>) => Promise<EstablishmentConfig>;
+  restoreBackup: (file: File) => Promise<{ students: number; invoices: number }>;
   createStudent: (studentData: Partial<StudentAdmission>) => Promise<StudentAdmission>;
   updateStudentStatus: (id: string, status: StudentAdmission['status'], notes?: string) => Promise<void>;
   createEnrollment: (data: {
@@ -156,12 +175,33 @@ interface AppContextType {
   runIntegrityTests: () => Promise<any[]>;
 }
 
+/**
+ * Erreur renvoyée par le serveur (validation, droits, doublon…).
+ * Contrairement à une erreur réseau, elle ne doit JAMAIS déclencher le mode
+ * dégradé local : sinon l'écran afficherait une opération refusée par le serveur.
+ */
+export class ApiError extends Error {
+  status?: number;
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentUser, activeRole } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const errorTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showError = (message: string) => {
+    setError(message);
+    if (errorTimer.current) clearTimeout(errorTimer.current);
+    errorTimer.current = setTimeout(() => setError(null), 8000);
+  };
+  const clearError = () => setError(null);
   const [testResults, setTestResults] = useState<any[]>([]);
   const [isRunningTests, setIsRunningTests] = useState(false);
 
@@ -182,6 +222,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [books, setBooks] = useState<Book[]>(INITIAL_BOOKS);
   const [bookLoans, setBookLoans] = useState<BookLoan[]>(INITIAL_BOOK_LOANS);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(INITIAL_AUDIT_LOGS);
+  const [reminders, setReminders] = useState<PaymentReminder[]>([]);
 
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<PaymentReceipt | null>(null);
@@ -217,12 +258,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (json.data.bookLoans) setBookLoans(json.data.bookLoans);
           setTimetables(json.data.timetables);
           setAuditLogs(json.data.auditLogs);
+          setReminders(json.data.reminders || []);
 
           // Persist to local offline cache bundle
           saveAcademicDataToOfflineCache(json.data);
         }
       } else {
-        throw new Error('API unavailable: status ' + res.status);
+        throw new ApiError('API unavailable: status ' + res.status);
       }
     } catch (e) {
       console.warn('Backend unavailable or offline, loading from local offline cache:', e);
@@ -246,6 +288,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (cached.data.bookLoans) setBookLoans(cached.data.bookLoans);
         if (cached.data.timetables) setTimetables(cached.data.timetables);
         if (cached.data.auditLogs) setAuditLogs(cached.data.auditLogs);
+        if (cached.data.reminders) setReminders(cached.data.reminders);
       }
     } finally {
       setLoading(false);
@@ -269,6 +312,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     refreshData();
   }, []);
 
+  // Les données sont cloisonnées par rôle côté serveur : on recharge à chaque changement de profil
+  const isFirstRoleRender = React.useRef(true);
+  useEffect(() => {
+    if (isFirstRoleRender.current) {
+      isFirstRoleRender.current = false;
+      return;
+    }
+    refreshData();
+  }, [currentUser.id, activeRole]);
+
   const createStudent = async (studentData: Partial<StudentAdmission>) => {
     try {
       const res = await fetch('/api/students', {
@@ -277,10 +330,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: JSON.stringify(studentData),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erreur lors de la création du dossier');
+      if (!res.ok) throw new ApiError(data.error || 'Erreur lors de la création du dossier');
       await refreshData();
       return data.data;
     } catch (e: any) {
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
       // Fallback
       const count = students.length + 1;
       const matricule = `${config.documentNumbering.matriculePrefix}-2025-${String(count).padStart(4, '0')}`;
@@ -310,12 +367,100 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateStudentStatus = async (id: string, status: StudentAdmission['status'], notes?: string) => {
-    await fetch(`/api/students/${id}/status`, {
+    const res = await fetch(`/api/students/${id}/status`, {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify({ status, admissionNotes: notes }),
     });
+    const result = await res.json();
+    if (!res.ok) {
+      showError(result.error || 'Erreur mise à jour du statut');
+      throw new ApiError(result.error || 'Erreur mise à jour du statut', res.status);
+    }
     await refreshData();
+  };
+
+  const updateStudent = async (id: string, data: Partial<StudentAdmission> & { reason?: string }) => {
+    const res = await fetch(`/api/students/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new ApiError(result.error || 'Erreur mise à jour du dossier', res.status);
+    await refreshData();
+    return result.data as StudentAdmission;
+  };
+
+  const sendReminder = async (data: {
+    studentId: string;
+    channel: ReminderChannel;
+    level: ReminderLevel;
+    recipient?: string;
+    message: string;
+    promiseDate?: string;
+    notes?: string;
+  }) => {
+    const res = await fetch('/api/reminders', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new ApiError(result.error || 'Erreur lors de l enregistrement de la relance', res.status);
+    setReminders((prev) => [result.data, ...prev]);
+    await refreshData();
+    return result.data as PaymentReminder;
+  };
+
+  const updateConfig = async (data: Partial<EstablishmentConfig>) => {
+    const res = await fetch('/api/config', {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new ApiError(result.error || 'Erreur lors de l enregistrement des paramètres', res.status);
+    setConfig(result.data);
+    await refreshData();
+    return result.data as EstablishmentConfig;
+  };
+
+  const downloadBackup = async () => {
+    const res = await fetch('/api/admin/backup', { headers: getHeaders() });
+    if (!res.ok) {
+      const result = await res.json().catch(() => ({}));
+      throw new ApiError(result.error || 'Sauvegarde impossible', res.status);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `dgb-sauvegarde-${new Date().toISOString().replace(/[:T]/g, '-').substring(0, 19)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    await refreshData();
+  };
+
+  const restoreBackup = async (file: File) => {
+    const text = await file.text();
+    let payload: unknown;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      throw new ApiError('Le fichier sélectionné n est pas un JSON valide');
+    }
+    const res = await fetch('/api/admin/restore', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new ApiError(result.error || 'Restauration impossible', res.status);
+    await refreshData();
+    return result.data as { students: number; invoices: number };
   };
 
   const createEnrollment = async (data: {
@@ -333,7 +478,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       body: JSON.stringify(data),
     });
     const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Erreur inscription');
+    if (!res.ok) throw new ApiError(result.error || 'Erreur inscription');
     await refreshData();
     return result.data;
   };
@@ -353,7 +498,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       body: JSON.stringify(data),
     });
     const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Erreur encaissement');
+    if (!res.ok) throw new ApiError(result.error || 'Erreur encaissement');
     await refreshData();
     return result.data;
   };
@@ -365,7 +510,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       body: JSON.stringify({ reason }),
     });
     const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Erreur annulation');
+    if (!res.ok) throw new ApiError(result.error || 'Erreur annulation');
     await refreshData();
   };
 
@@ -376,7 +521,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       body: JSON.stringify({ initialCash, notes }),
     });
     const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Erreur ouverture de caisse');
+    if (!res.ok) throw new ApiError(result.error || 'Erreur ouverture de caisse');
     await refreshData();
   };
 
@@ -387,7 +532,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       body: JSON.stringify({ actualCountedBalance: countedCash, notes }),
     });
     const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Erreur clôture de caisse');
+    if (!res.ok) throw new ApiError(result.error || 'Erreur clôture de caisse');
     await refreshData();
   };
 
@@ -398,7 +543,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       body: JSON.stringify(data),
     });
     const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Erreur création dépense');
+    if (!res.ok) throw new ApiError(result.error || 'Erreur création dépense');
     await refreshData();
     return result.data;
   };
@@ -410,7 +555,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       body: JSON.stringify({ newStage, paymentMethod }),
     });
     const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Erreur transition étape');
+    if (!res.ok) throw new ApiError(result.error || 'Erreur transition étape');
     await refreshData();
   };
 
@@ -421,7 +566,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       body: JSON.stringify(data),
     });
     const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Erreur note');
+    if (!res.ok) throw new ApiError(result.error || 'Erreur note');
     await refreshData();
     return result.data;
   };
@@ -434,10 +579,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: JSON.stringify({ grades: gradeList }),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Erreur enregistrement par lot des notes');
+      if (!res.ok) throw new ApiError(result.error || 'Erreur enregistrement par lot des notes');
       await refreshData();
       return result.data;
     } catch (e: any) {
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
       console.warn('Backend batch grades failed, updating local state:', e);
       const updatedList: GradeItem[] = [];
       setGrades((prev) => {
@@ -489,7 +638,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       body: JSON.stringify({ status }),
     });
     const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Erreur validation note');
+    if (!res.ok) throw new ApiError(result.error || 'Erreur validation note');
     await refreshData();
   };
 
@@ -502,6 +651,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const resetDemoData = async () => {
     const res = await fetch('/api/admin/reset', { method: 'POST', headers: getHeaders() });
     const result = await res.json();
+    if (!res.ok) {
+      showError(result.error || 'Réinitialisation refusée');
+      return;
+    }
     await refreshData();
     return result.data;
   };
@@ -512,7 +665,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       headers: getHeaders(),
     });
     const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Erreur clôture année');
+    if (!res.ok) throw new ApiError(result.error || 'Erreur clôture année');
     await refreshData();
   };
 
@@ -523,7 +676,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       body: JSON.stringify({ type, amount, motive }),
     });
     const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Erreur mouvement caisse');
+    if (!res.ok) throw new ApiError(result.error || 'Erreur mouvement caisse');
     await refreshData();
   };
 
@@ -535,10 +688,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: JSON.stringify(data),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "Erreur lors de l'enregistrement de l'émargement");
+      if (!res.ok) throw new ApiError(result.error || "Erreur lors de l'enregistrement de l'émargement");
       await refreshData();
       return result.data;
     } catch (e: any) {
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
       const fallbackRecord: AttendanceRecord = {
         id: data.id || `att_${Date.now()}`,
         date: data.date || new Date().toISOString().split('T')[0],
@@ -580,10 +737,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: JSON.stringify({ signedBy }),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Erreur lors de la signature');
+      if (!res.ok) throw new ApiError(result.error || 'Erreur lors de la signature');
       await refreshData();
       return result.data;
     } catch (e: any) {
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
       setAttendance((prev) =>
         prev.map((a) =>
           a.id === id
@@ -608,9 +769,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         headers: getHeaders(),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Erreur lors de la suppression');
+      if (!res.ok) throw new ApiError(result.error || 'Erreur lors de la suppression');
       await refreshData();
     } catch (e: any) {
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
       setAttendance((prev) => prev.filter((a) => a.id !== id));
     }
   };
@@ -628,12 +793,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: JSON.stringify(data),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Erreur lors de l enregistrement du diplôme');
+      if (!res.ok) throw new ApiError(result.error || 'Erreur lors de l enregistrement du diplôme');
       await refreshData();
       return result.data;
     } catch (e: any) {
-      setError(e.message);
-      // Fallback local update
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
+      // Fallback local update (mode hors-ligne)
       if (data.id && diplomas.some((d) => d.id === data.id)) {
         setDiplomas((prev) =>
           prev.map((d) => (d.id === data.id ? ({ ...d, ...data } as DiplomaCertificate) : d))
@@ -682,10 +850,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: JSON.stringify({ reason }),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Erreur lors de l enregistrement de l impression');
+      if (!res.ok) throw new ApiError(result.error || 'Erreur lors de l enregistrement de l impression');
       await refreshData();
       return result.data;
     } catch (e: any) {
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
       setDiplomas((prev) =>
         prev.map((d) => {
           if (d.id === id) {
@@ -720,10 +892,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: JSON.stringify({ reason }),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Erreur lors de la révocation');
+      if (!res.ok) throw new ApiError(result.error || 'Erreur lors de la révocation');
       await refreshData();
       return result.data;
     } catch (e: any) {
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
       setDiplomas((prev) =>
         prev.map((d) =>
           d.id === id
@@ -748,9 +924,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         headers: getHeaders(),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Erreur lors de la suppression');
+      if (!res.ok) throw new ApiError(result.error || 'Erreur lors de la suppression');
       await refreshData();
     } catch (e: any) {
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
       setDiplomas((prev) => prev.filter((d) => d.id !== id));
     }
   };
@@ -769,10 +949,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: JSON.stringify(data),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Erreur lors de la génération groupée');
+      if (!res.ok) throw new ApiError(result.error || 'Erreur lors de la génération groupée');
       await refreshData();
       return result.data;
     } catch (e: any) {
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
       throw e;
     }
   };
@@ -782,6 +966,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const res = await fetch(`/api/diplomas/verify/${encodeURIComponent(serialOrToken)}`);
       return await res.json();
     } catch (e: any) {
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
       // Local fallback search
       const query = serialOrToken.trim().toUpperCase();
       const match = diplomas.find(
@@ -817,11 +1005,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsRunningTests(true);
     try {
       const data = await runTests();
-      const results = data.tests || [];
+      // Le serveur renvoie { results: [{ id, name, category, status, message, details }] }
+      const results = (data?.results || []).map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        category: r.category,
+        passed: r.status === 'passed',
+        description: r.message,
+        details:
+          typeof r.details === 'string'
+            ? r.details
+            : r.details
+              ? JSON.stringify(r.details)
+              : r.category,
+      }));
       setTestResults(results);
       return results;
     } catch (err: any) {
-      setError(err.message);
+      showError(err.message);
       return [];
     } finally {
       setIsRunningTests(false);
@@ -837,13 +1038,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Erreur lors de la création du livre');
+        throw new ApiError(err.error || 'Erreur lors de la création du livre');
       }
       const json = await res.json();
       const newBook: Book = json.data;
       setBooks((prev) => [newBook, ...prev]);
       return newBook;
     } catch (e: any) {
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
       // Local fallback
       const newBook: Book = {
         id: `book_${Date.now()}`,
@@ -873,13 +1078,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Erreur lors de la modification du livre');
+        throw new ApiError(err.error || 'Erreur lors de la modification du livre');
       }
       const json = await res.json();
       const updated: Book = json.data;
       setBooks((prev) => prev.map((b) => (b.id === id ? updated : b)));
       return updated;
     } catch (e: any) {
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
       let updatedBook: Book | null = null;
       setBooks((prev) =>
         prev.map((b) => {
@@ -902,10 +1111,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Erreur lors de la suppression du livre');
+        throw new ApiError(err.error || 'Erreur lors de la suppression du livre');
       }
       setBooks((prev) => prev.filter((b) => b.id !== id));
     } catch (e: any) {
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
       setBooks((prev) => prev.filter((b) => b.id !== id));
     }
   };
@@ -926,7 +1139,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Erreur lors de l enregistrement de l emprunt');
+        throw new ApiError(err.error || 'Erreur lors de l enregistrement de l emprunt');
       }
       const json = await res.json();
       const newLoan: BookLoan = json.data;
@@ -939,6 +1152,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
       return newLoan;
     } catch (e: any) {
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
       const student = students.find((s) => s.id === data.studentId);
       const book = books.find((b) => b.id === data.bookId);
       const today = new Date().toISOString().split('T')[0];
@@ -982,7 +1199,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Erreur lors de la restitution');
+        throw new ApiError(err.error || 'Erreur lors de la restitution');
       }
       const json = await res.json();
       const updated: BookLoan = json.data;
@@ -994,6 +1211,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
       return updated;
     } catch (e: any) {
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
       let updatedLoan: BookLoan | null = null;
       const today = new Date().toISOString().split('T')[0];
       setBookLoans((prev) =>
@@ -1033,13 +1254,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Erreur lors de la prolongation');
+        throw new ApiError(err.error || 'Erreur lors de la prolongation');
       }
       const json = await res.json();
       const updated: BookLoan = json.data;
       setBookLoans((prev) => prev.map((l) => (l.id === id ? updated : l)));
       return updated;
     } catch (e: any) {
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
       let updatedLoan: BookLoan | null = null;
       setBookLoans((prev) =>
         prev.map((l) => {
@@ -1078,7 +1303,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Erreur lors de la sauvegarde du créneau');
+        throw new ApiError(err.error || 'Erreur lors de la sauvegarde du créneau');
       }
 
       const json = await res.json();
@@ -1096,6 +1321,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       return saved;
     } catch (e: any) {
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
       console.warn('Backend timetable save failed, falling back to local state:', e);
       const fallbackSlot: TimetableSlot = {
         id: data.id || `tt_${Date.now()}`,
@@ -1135,11 +1364,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Erreur lors de la suppression du créneau');
+        throw new ApiError(err.error || 'Erreur lors de la suppression du créneau');
       }
 
       setTimetables((prev) => prev.filter((t) => t.id !== id));
     } catch (e: any) {
+      if (e instanceof ApiError) {
+        showError(e.message);
+        throw e;
+      }
       console.warn('Backend timetable delete failed, falling back to local state:', e);
       setTimetables((prev) => prev.filter((t) => t.id !== id));
     }
@@ -1179,6 +1412,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         testResults,
         isRunningTests,
         refreshData,
+        clearError,
+        showError,
+        reminders,
+        updateStudent,
+        sendReminder,
+        downloadBackup,
+        updateConfig,
+        restoreBackup,
         createStudent,
         updateStudentStatus,
         createEnrollment,
@@ -1226,7 +1467,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 export function useApp() {
   const context = useContext(AppContext);
   if (!context) {
-    throw new Error('useApp must be used within an AppProvider');
+    throw new ApiError('useApp must be used within an AppProvider');
   }
   return context;
 }

@@ -29,6 +29,7 @@ export interface OfflineAcademicCache {
     bookLoans?: any[];
     diplomas?: any[];
     auditLogs?: any[];
+    reminders?: any[];
   };
 }
 

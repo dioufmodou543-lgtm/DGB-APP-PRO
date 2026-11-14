@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AlertCircle,
   Award,
@@ -31,6 +31,7 @@ import { useAuth } from '../../context/AuthContext';
 import { calculateBalanceDue, formatFCFA } from '../../services/currency';
 import { StudentAdmission } from '../../types';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
+import { downloadCSV, todayStamp } from '../../utils/csv';
 
 export const StudentsView: React.FC = () => {
   const { isOnline } = useOnlineStatus();
@@ -44,13 +45,83 @@ export const StudentsView: React.FC = () => {
     updateStudentStatus,
     createEnrollment,
     setActiveView,
+    updateStudent,
+    receipts,
+    config,
+    selectedStudentId,
+    setSelectedStudentId,
   } = useApp();
 
-  const { activeRole } = useAuth();
+  const { activeRole, currentUser } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [selectedStudent, setSelectedStudent] = useState<StudentAdmission | null>(null);
+  const [selectedStudentRaw, setSelectedStudent] = useState<StudentAdmission | null>(null);
+  // Toujours afficher la version à jour du dossier (après admission, inscription, modification…)
+  const selectedStudent = selectedStudentRaw
+    ? students.find((s) => s.id === selectedStudentRaw.id) || selectedStudentRaw
+    : null;
+  const [editForm, setEditForm] = useState<Partial<StudentAdmission> | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // Ouverture directe d'un dossier depuis la recherche globale (Ctrl+K)
+  useEffect(() => {
+    if (!selectedStudentId) return;
+    const found = students.find((s) => s.id === selectedStudentId);
+    if (found) setSelectedStudent(found);
+    setSelectedStudentId(null);
+  }, [selectedStudentId, students]);
+
+  const canEditStudent = ['admin', 'dg', 'scolarite'].includes(activeRole);
+
+  const openEditForm = (stu: StudentAdmission) => {
+    setEditError(null);
+    setEditForm({
+      firstName: stu.firstName,
+      lastName: stu.lastName,
+      gender: stu.gender,
+      birthDate: stu.birthDate,
+      birthPlace: stu.birthPlace,
+      nationality: stu.nationality,
+      cniPassport: stu.cniPassport,
+      email: stu.email,
+      phone: stu.phone,
+      parentName: stu.parentName,
+      parentPhone: stu.parentPhone,
+      address: stu.address,
+      city: stu.city,
+    });
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedStudent || !editForm) return;
+    setIsSavingEdit(true);
+    setEditError(null);
+    try {
+      await updateStudent(selectedStudent.id, editForm);
+      setEditForm(null);
+    } catch (err: any) {
+      setEditError(err.message || 'Erreur lors de la mise à jour du dossier');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const downloadStatement = async (stu: StudentAdmission) => {
+    const { generateStudentStatementPDF } = await import('../../services/studentStatementPdf');
+    const doc = generateStudentStatementPDF({
+      config,
+      student: stu,
+      enrollments,
+      programs,
+      invoices,
+      receipts,
+      generatedBy: currentUser.name,
+    });
+    doc.save(`releve_compte_${stu.matricule}_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
 
@@ -89,7 +160,9 @@ export const StudentsView: React.FC = () => {
       alert('Veuillez renseigner au minimum le prénom, nom et la pièce d identité.');
       return;
     }
-    const newStu = await createStudent({
+    let newStu: StudentAdmission;
+    try {
+      newStu = await createStudent({
       firstName,
       lastName,
       gender,
@@ -104,6 +177,10 @@ export const StudentsView: React.FC = () => {
       city,
       status: 'candidat',
     });
+    } catch (err: any) {
+      alert(err.message || 'Erreur lors de la création du dossier');
+      return;
+    }
     setIsCreateModalOpen(false);
     setSelectedStudent(newStu);
     // Reset
@@ -116,6 +193,7 @@ export const StudentsView: React.FC = () => {
     e.preventDefault();
     if (!selectedStudent) return;
     const activeYear = academicYears.find((y) => y.isCurrent) || academicYears[0];
+    try {
     await createEnrollment({
       studentId: selectedStudent.id,
       programId: enrollProgramId,
@@ -125,6 +203,10 @@ export const StudentsView: React.FC = () => {
       discountType: enrollDiscount > 0 ? 'sociale' : 'none',
       discountReason: enrollDiscount > 0 ? 'Remise accordée par la commission' : undefined,
     });
+    } catch (err: any) {
+      alert(err.message || 'Erreur lors de l inscription');
+      return;
+    }
     setIsEnrollModalOpen(false);
   };
 
@@ -146,19 +228,21 @@ export const StudentsView: React.FC = () => {
   };
 
   const exportCSV = () => {
-    const headers = 'Matricule,Prénom,Nom,Statut,Téléphone,Email,CNI,Ville\n';
-    const rows = filteredStudents
-      .map(
-        (s) =>
-          `"${s.matricule}","${s.firstName}","${s.lastName}","${s.status}","${s.phone}","${s.email}","${s.cniPassport}","${s.city}"`
-      )
-      .join('\n');
-    const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `etudiants_ismnm_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
+    downloadCSV<StudentAdmission>(`etudiants_${todayStamp()}`, filteredStudents, [
+      { header: 'Matricule', value: (s) => s.matricule },
+      { header: 'Prénom', value: (s) => s.firstName },
+      { header: 'Nom', value: (s) => s.lastName },
+      { header: 'Sexe', value: (s) => s.gender },
+      { header: 'Date de naissance', value: (s) => s.birthDate },
+      { header: 'Statut', value: (s) => s.status },
+      { header: 'Téléphone', value: (s) => s.phone },
+      { header: 'Email', value: (s) => s.email },
+      { header: 'CNI / Passeport', value: (s) => s.cniPassport },
+      { header: 'Tuteur', value: (s) => s.parentName },
+      { header: 'Téléphone tuteur', value: (s) => s.parentPhone },
+      { header: 'Ville', value: (s) => s.city },
+      { header: 'Reste dû (FCFA)', value: (s) => getStudentFinancials(s.id).balanceDue },
+    ]);
   };
 
   return (
@@ -362,7 +446,25 @@ export const StudentsView: React.FC = () => {
                     {selectedStudent.status}
                   </span>
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {canEditStudent && (
+                    <button
+                      onClick={() => openEditForm(selectedStudent)}
+                      className="px-3 py-1 bg-white text-slate-800 border border-slate-300 rounded-lg font-medium hover:bg-slate-100 flex items-center gap-1.5"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Modifier le dossier</span>
+                    </button>
+                  )}
+                  {invoices.some((i) => i.studentId === selectedStudent.id) && (
+                    <button
+                      onClick={() => downloadStatement(selectedStudent)}
+                      className="px-3 py-1 bg-white text-slate-800 border border-slate-300 rounded-lg font-medium hover:bg-slate-100 flex items-center gap-1.5"
+                    >
+                      <Download className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Relevé de compte PDF</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => setActiveView('diplomas')}
                     className="px-3 py-1 bg-amber-50 text-amber-900 border border-amber-300 rounded-lg font-medium hover:bg-amber-100 flex items-center gap-1.5 transition-colors"
@@ -372,7 +474,9 @@ export const StudentsView: React.FC = () => {
                   </button>
                   {selectedStudent.status === 'candidat' && (
                     <button
-                      onClick={() => updateStudentStatus(selectedStudent.id, 'admis', 'Dossier validé par scolarité')}
+                      onClick={() =>
+                        updateStudentStatus(selectedStudent.id, 'admis', 'Dossier validé par scolarité').catch(() => undefined)
+                      }
                       className="px-3 py-1 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
                     >
                       Prononcer l admission
@@ -624,6 +728,84 @@ export const StudentsView: React.FC = () => {
       )}
 
       {/* ENROLL STUDENT MODAL */}
+      {editForm && selectedStudent && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto bg-slate-900/60 flex items-center justify-center p-4">
+          <form
+            onSubmit={handleSaveEdit}
+            className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 max-h-[92vh] flex flex-col"
+          >
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Modifier le dossier {selectedStudent.matricule}</h3>
+                <p className="text-[11px] text-slate-500">Chaque modification est tracée dans le journal d audit.</p>
+              </div>
+              <button type="button" onClick={() => setEditForm(null)} className="p-1 rounded-lg hover:bg-slate-100">
+                <X className="w-4 h-4 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              {(
+                [
+                  ['firstName', 'Prénom', 'text'],
+                  ['lastName', 'Nom', 'text'],
+                  ['birthDate', 'Date de naissance', 'date'],
+                  ['birthPlace', 'Lieu de naissance', 'text'],
+                  ['nationality', 'Nationalité', 'text'],
+                  ['cniPassport', 'CNI / Passeport', 'text'],
+                  ['phone', 'Téléphone', 'tel'],
+                  ['email', 'E-mail', 'email'],
+                  ['parentName', 'Nom du tuteur', 'text'],
+                  ['parentPhone', 'Téléphone du tuteur', 'tel'],
+                  ['address', 'Adresse', 'text'],
+                  ['city', 'Ville', 'text'],
+                ] as [keyof StudentAdmission, string, string][]
+              ).map(([key, label, type]) => (
+                <label key={key} className="space-y-1">
+                  <span className="text-[11px] font-semibold text-slate-600">{label}</span>
+                  <input
+                    type={type}
+                    value={(editForm[key] as string) || ''}
+                    required={key === 'firstName' || key === 'lastName'}
+                    onChange={(e) => setEditForm((f) => ({ ...(f || {}), [key]: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </label>
+              ))}
+              <label className="space-y-1">
+                <span className="text-[11px] font-semibold text-slate-600">Sexe</span>
+                <select
+                  value={editForm.gender || 'M'}
+                  onChange={(e) => setEditForm((f) => ({ ...(f || {}), gender: e.target.value as 'M' | 'F' }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white"
+                >
+                  <option value="M">Masculin</option>
+                  <option value="F">Féminin</option>
+                </select>
+              </label>
+            </div>
+            {editError && (
+              <div className="mx-6 mb-3 p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs">{editError}</div>
+            )}
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditForm(null)}
+                className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Annuler
+              </button>
+              <button
+                type="submit"
+                disabled={isSavingEdit}
+                className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {isSavingEdit ? 'Enregistrement…' : 'Enregistrer les modifications'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {isEnrollModalOpen && selectedStudent && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <form

@@ -17,6 +17,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { formatFCFA } from '../../services/currency';
 import { ExpenseCategory, ExpenseStage, VendorExpense } from '../../types';
+import { downloadCSV, todayStamp } from '../../utils/csv';
 
 export const ExpensesView: React.FC = () => {
   const { expenses, createExpense, advanceExpenseStage } = useApp();
@@ -92,6 +93,29 @@ export const ExpensesView: React.FC = () => {
           </p>
         </div>
 
+        <div className="flex items-center gap-2">
+        <button
+          onClick={() =>
+            downloadCSV<VendorExpense>(`depenses_fournisseurs_${todayStamp()}`, filteredExpenses, [
+              { header: 'N° dépense', value: (e) => e.expenseNumber },
+              { header: 'Fournisseur', value: (e) => e.vendorName },
+              { header: 'Catégorie', value: (e) => e.category },
+              { header: 'Description', value: (e) => e.description },
+              { header: 'Date facture', value: (e) => e.invoiceDate },
+              { header: 'Échéance', value: (e) => e.dueDate },
+              { header: 'Montant (FCFA)', value: (e) => e.amount },
+              { header: 'Payé (FCFA)', value: (e) => e.paidAmount },
+              { header: 'Étape', value: (e) => e.stage },
+              { header: 'Mode de paiement', value: (e) => e.paymentMethod || '' },
+              { header: 'Saisi par', value: (e) => e.recordedBy },
+              { header: 'Ordonnancé par', value: (e) => e.approvedBy || '' },
+            ])
+          }
+          className="px-3 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 text-xs font-medium flex items-center space-x-1.5 bg-white"
+        >
+          <Download className="w-3.5 h-3.5" />
+          <span>Exporter (Excel)</span>
+        </button>
         <button
           onClick={() => setIsNewModalOpen(true)}
           className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 shadow-xs"
@@ -99,6 +123,7 @@ export const ExpensesView: React.FC = () => {
           <Plus className="w-4 h-4" />
           <span>Nouvelle Dépense / Facture</span>
         </button>
+        </div>
       </div>
 
       {/* 4 Stages Progression Summary (Section 3.F & 4) */}
